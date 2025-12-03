@@ -222,20 +222,19 @@ mod tests {
                 .to_string(),
         );
 
-        SqsEvent {
-            records: vec![SqsMessage {
-                message_id: Some("msg-123".to_string()),
-                receipt_handle: Some("receipt-123".to_string()),
-                body: Some(r#"{"test": "data"}"#.to_string()),
-                attributes,
-                message_attributes: HashMap::new(),
-                md5_of_body: None,
-                md5_of_message_attributes: None,
-                event_source: Some("aws:sqs".to_string()),
-                event_source_arn: Some("arn:aws:sqs:us-east-1:123456789:my-queue".to_string()),
-                aws_region: Some("us-east-1".to_string()),
-            }],
-        }
+        let mut message = SqsMessage::default();
+        message.message_id = Some("msg-123".to_string());
+        message.receipt_handle = Some("receipt-123".to_string());
+        message.body = Some(r#"{"test": "data"}"#.to_string());
+        message.attributes = attributes;
+        message.message_attributes = HashMap::new();
+        message.event_source = Some("aws:sqs".to_string());
+        message.event_source_arn = Some("arn:aws:sqs:us-east-1:123456789:my-queue".to_string());
+        message.aws_region = Some("us-east-1".to_string());
+
+        let mut event = SqsEvent::default();
+        event.records = vec![message];
+        event
     }
 
     fn create_test_lambda_context() -> LambdaContext {
@@ -308,18 +307,14 @@ mod tests {
                 .to_string(),
         );
 
-        let event = SqsEvent {
-            records: vec![
-                SqsMessage {
-                    attributes: attrs1,
-                    ..Default::default()
-                },
-                SqsMessage {
-                    attributes: attrs2,
-                    ..Default::default()
-                },
-            ],
-        };
+        let mut msg1 = SqsMessage::default();
+        msg1.attributes = attrs1;
+
+        let mut msg2 = SqsMessage::default();
+        msg2.attributes = attrs2;
+
+        let mut event = SqsEvent::default();
+        event.records = vec![msg1, msg2];
 
         let links = extractor.extract_links(&event);
 
@@ -334,12 +329,11 @@ mod tests {
     fn test_extract_links_no_trace_header() {
         let extractor = SqsEventExtractor::new();
 
-        let event = SqsEvent {
-            records: vec![SqsMessage {
-                attributes: HashMap::new(),
-                ..Default::default()
-            }],
-        };
+        let mut msg = SqsMessage::default();
+        msg.attributes = HashMap::new();
+
+        let mut event = SqsEvent::default();
+        event.records = vec![msg];
 
         let links = extractor.extract_links(&event);
         assert!(links.is_empty());

@@ -38,7 +38,7 @@ opentelemetry_sdk.workspace = true
 lambda_runtime.workspace = true
 
 # Lambda event types (feature-gated)
-aws_lambda_events = { version = "0.16", default-features = false, features = [] }
+aws_lambda_events = { version = "1.0", default-features = false, features = [] }
 
 # HTTP types
 http = "1"
@@ -51,7 +51,7 @@ opentelemetry-stdout = "0.31"
 serde_json = "1"
 temp-env = "0.3"
 serial_test = "3.2"
-aws_lambda_events = { version = "0.16", features = ["apigw", "sqs", "sns"] }
+aws_lambda_events = { version = "1.0", features = ["apigw", "sqs", "sns"] }
 chrono.workspace = true
 
 [features]

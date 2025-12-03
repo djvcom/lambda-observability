@@ -196,36 +196,35 @@ mod tests {
 
     fn create_test_sns_event_with_trace() -> SnsEvent {
         let mut attrs = HashMap::new();
-        attrs.insert(
-            "AWSTraceHeader".to_string(),
-            MessageAttribute {
-                data_type: "String".to_string(),
-                value: "Root=1-5759e988-bd862e3fe1be46a994272793;Parent=53995c3f42cd8ad8;Sampled=1"
-                    .to_string(),
-            },
-        );
+        let mut trace_attr = MessageAttribute::default();
+        trace_attr.data_type = "String".to_string();
+        trace_attr.value =
+            "Root=1-5759e988-bd862e3fe1be46a994272793;Parent=53995c3f42cd8ad8;Sampled=1"
+                .to_string();
+        attrs.insert("AWSTraceHeader".to_string(), trace_attr);
 
-        SnsEvent {
-            records: vec![SnsRecord {
-                event_source: "aws:sns".to_string(),
-                event_version: "1.0".to_string(),
-                event_subscription_arn: "arn:aws:sns:us-east-1:123456789:my-topic:sub-123"
-                    .to_string(),
-                sns: SnsMessage {
-                    sns_message_type: "Notification".to_string(),
-                    message_id: "msg-123".to_string(),
-                    topic_arn: "arn:aws:sns:us-east-1:123456789:my-topic".to_string(),
-                    subject: None,
-                    timestamp: Utc::now(),
-                    signature_version: "1".to_string(),
-                    signature: "sig".to_string(),
-                    signing_cert_url: "https://cert".to_string(),
-                    unsubscribe_url: "https://unsub".to_string(),
-                    message: r#"{"test": "data"}"#.to_string(),
-                    message_attributes: attrs,
-                },
-            }],
-        }
+        let mut sns_msg = SnsMessage::default();
+        sns_msg.sns_message_type = "Notification".to_string();
+        sns_msg.message_id = "msg-123".to_string();
+        sns_msg.topic_arn = "arn:aws:sns:us-east-1:123456789:my-topic".to_string();
+        sns_msg.timestamp = Utc::now();
+        sns_msg.signature_version = "1".to_string();
+        sns_msg.signature = "sig".to_string();
+        sns_msg.signing_cert_url = "https://cert".to_string();
+        sns_msg.unsubscribe_url = "https://unsub".to_string();
+        sns_msg.message = r#"{"test": "data"}"#.to_string();
+        sns_msg.message_attributes = attrs;
+
+        let mut record = SnsRecord::default();
+        record.event_source = "aws:sns".to_string();
+        record.event_version = "1.0".to_string();
+        record.event_subscription_arn =
+            "arn:aws:sns:us-east-1:123456789:my-topic:sub-123".to_string();
+        record.sns = sns_msg;
+
+        let mut event = SnsEvent::default();
+        event.records = vec![record];
+        event
     }
 
     #[test]
@@ -264,27 +263,27 @@ mod tests {
     fn test_extract_links_no_trace_header() {
         let extractor = SnsEventExtractor::new();
 
-        let event = SnsEvent {
-            records: vec![SnsRecord {
-                event_source: "aws:sns".to_string(),
-                event_version: "1.0".to_string(),
-                event_subscription_arn: "arn:aws:sns:us-east-1:123456789:my-topic:sub-123"
-                    .to_string(),
-                sns: SnsMessage {
-                    sns_message_type: "Notification".to_string(),
-                    message_id: "msg-123".to_string(),
-                    topic_arn: "arn:aws:sns:us-east-1:123456789:my-topic".to_string(),
-                    subject: None,
-                    timestamp: Utc::now(),
-                    signature_version: "1".to_string(),
-                    signature: "sig".to_string(),
-                    signing_cert_url: "https://cert".to_string(),
-                    unsubscribe_url: "https://unsub".to_string(),
-                    message: r#"{"test": "data"}"#.to_string(),
-                    message_attributes: HashMap::new(),
-                },
-            }],
-        };
+        let mut sns_msg = SnsMessage::default();
+        sns_msg.sns_message_type = "Notification".to_string();
+        sns_msg.message_id = "msg-123".to_string();
+        sns_msg.topic_arn = "arn:aws:sns:us-east-1:123456789:my-topic".to_string();
+        sns_msg.timestamp = Utc::now();
+        sns_msg.signature_version = "1".to_string();
+        sns_msg.signature = "sig".to_string();
+        sns_msg.signing_cert_url = "https://cert".to_string();
+        sns_msg.unsubscribe_url = "https://unsub".to_string();
+        sns_msg.message = r#"{"test": "data"}"#.to_string();
+        sns_msg.message_attributes = HashMap::new();
+
+        let mut record = SnsRecord::default();
+        record.event_source = "aws:sns".to_string();
+        record.event_version = "1.0".to_string();
+        record.event_subscription_arn =
+            "arn:aws:sns:us-east-1:123456789:my-topic:sub-123".to_string();
+        record.sns = sns_msg;
+
+        let mut event = SnsEvent::default();
+        event.records = vec![record];
 
         let links = extractor.extract_links(&event);
         assert!(links.is_empty());
