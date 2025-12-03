@@ -1,0 +1,48 @@
+[workspace]
+members = ["crates/*"]
+resolver = "3"
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.91.1"
+license = "MIT"
+
+[workspace.dependencies]
+axum = "0.8"
+chrono = { version = "0.4", features = ["serde"] }
+lambda_runtime = "1.0"
+opentelemetry = "0.31"
+opentelemetry_sdk = { version = "0.31", features = ["rt-tokio"] }
+opentelemetry-otlp = { version = "0.31", default-features = false, features = ["grpc-tonic", "http-proto", "reqwest-blocking-client", "trace", "logs", "metrics"] }
+opentelemetry-proto = { version = "0.31", features = ["gen-tonic-messages", "with-serde", "trace"] }
+reqwest = { version = "0.12", features = ["json"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+temp-env = { version = "0.3", features = ["async_closure"] }
+thiserror = "2.0"
+tokio = { version = "1.48", features = ["macros", "rt-multi-thread", "sync", "time", "net"] }
+tracing = "0.1"
+tracing-opentelemetry = "0.32"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+uuid = { version = "1.18", features = ["v4", "serde"] }
+
+lambda-simulator = { path = "crates/lambda-simulator" }
+opentelemetry-configuration = { path = "crates/opentelemetry-configuration" }
+opentelemetry-lambda-extension = { path = "crates/opentelemetry-lambda-extension" }
+opentelemetry-lambda-example = { path = "crates/opentelemetry-lambda-example" }
+opentelemetry-lambda-tower = { path = "crates/opentelemetry-lambda-tower" }
+
+[package]
+name = "lambda-observability"
+version = "0.1.0"
+edition.workspace = true
+publish = false
+
+[dev-dependencies]
+lambda_runtime.workspace = true
+lambda-simulator.workspace = true
+opentelemetry-lambda-example.workspace = true
+reqwest.workspace = true
+serde_json.workspace = true
+temp-env.workspace = true
+tokio.workspace = true

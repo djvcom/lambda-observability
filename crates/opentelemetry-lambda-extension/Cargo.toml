@@ -1,0 +1,63 @@
+[package]
+name = "opentelemetry-lambda-extension"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors = ["Daniel Verrall"]
+description = "AWS Lambda extension for collecting and exporting OpenTelemetry signals"
+repository = "https://github.com/djvcom/lambda-observability"
+documentation = "https://docs.rs/opentelemetry-lambda-extension"
+readme = "README.md"
+keywords = ["lambda", "aws", "opentelemetry", "telemetry", "extension"]
+categories = ["development-tools::profiling"]
+
+[[bin]]
+name = "opentelemetry-lambda-extension"
+path = "src/main.rs"
+
+[dependencies]
+opentelemetry-configuration.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tokio-util = { version = "0.7", features = ["rt"] }
+figment = { version = "0.10.19", features = ["env", "toml"] }
+opentelemetry.workspace = true
+opentelemetry_sdk.workspace = true
+opentelemetry-proto.workspace = true
+axum = { workspace = true, features = ["tokio"] }
+tower = { version = "0.5.2", features = ["timeout"] }
+bytes = "1.11.0"
+prost = "0.14.1"
+chrono = { workspace = true, features = ["serde"] }
+flate2 = "1.1.5"
+hex = "0.4.3"
+lambda-extension = "1.0.1"
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+opentelemetry-semantic-conventions = { version = "0.31", features = ["semconv_experimental"] }
+anyhow = "1.0.100"
+opentelemetry-otlp = { workspace = true, features = ["http-proto", "grpc-tonic"] }
+opentelemetry-appender-tracing = "0.31.1"
+tonic = "0.14.2"
+tracing-opentelemetry.workspace = true
+humantime-serde = "1.1.1"
+rand = "0.9.2"
+
+[dev-dependencies]
+lambda-simulator.workspace = true
+opentelemetry-lambda-example.workspace = true
+lambda_runtime.workspace = true
+mock-collector = "0.2.0"
+temp-env.workspace = true
+tempfile = "3.23.0"
+serial_test = "3.2.0"
+criterion = "0.8.0"
+proptest = "1.9.0"
+
+[[bench]]
+name = "conversion"
+harness = false

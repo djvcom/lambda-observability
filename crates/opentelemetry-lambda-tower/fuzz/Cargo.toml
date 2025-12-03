@@ -1,0 +1,31 @@
+[package]
+name = "opentelemetry-lambda-tower-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[workspace]
+
+[dependencies]
+libfuzzer-sys = "0.4"
+
+[dependencies.opentelemetry-lambda-tower]
+path = ".."
+features = ["fuzz"]
+
+[[bin]]
+name = "fuzz_xray_header"
+path = "fuzz_targets/fuzz_xray_header.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_traceparent"
+path = "fuzz_targets/fuzz_traceparent.rs"
+test = false
+doc = false
+bench = false

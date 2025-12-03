@@ -1,0 +1,48 @@
+[package]
+name = "lambda-simulator"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors = ["Daniel Verrall"]
+description = "High-fidelity AWS Lambda Runtime API simulator for testing Lambda runtimes and extensions locally"
+repository = "https://github.com/djvcom/lambda-observability"
+documentation = "https://docs.rs/lambda-simulator"
+readme = "README.md"
+keywords = ["lambda", "aws", "testing", "simulator", "runtime"]
+categories = ["development-tools::testing", "simulation"]
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[dependencies]
+axum.workspace = true
+chrono.workspace = true
+http-body = "1.0"
+nix = { version = "0.30", features = ["signal", "process"] }
+parking_lot = "0.12.5"
+pin-project-lite = "0.2"
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tower = "0.5"
+tracing.workspace = true
+uuid = { workspace = true, features = ["v4"] }
+
+[dev-dependencies]
+bytes = "1.11"
+criterion = "0.8.0"
+http-body-util = "0.1"
+lambda_runtime = { version = "1.0", features = ["tracing"] }
+proptest = "1.9.0"
+regex = "1.12.2"
+reqwest = { workspace = true, features = ["blocking"] }
+temp-env = { version = "0.3", features = ["async_closure"] }
+tokio = { workspace = true, features = ["test-util"] }
+
+[[bench]]
+name = "invocation"
+harness = false

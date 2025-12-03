@@ -1,0 +1,62 @@
+[package]
+name = "opentelemetry-lambda-tower"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors = ["Daniel Verrall"]
+description = "OpenTelemetry Tower middleware for AWS Lambda"
+repository = "https://github.com/djvcom/lambda-observability"
+documentation = "https://docs.rs/opentelemetry-lambda-tower"
+readme = "README.md"
+keywords = ["lambda", "opentelemetry", "tracing", "aws", "serverless"]
+categories = ["development-tools::profiling", "web-programming"]
+
+[dependencies]
+# Tower middleware
+tower = "0.5"
+tower-service = "0.3"
+
+# Async utilities
+pin-project = "1"
+futures-core = "0.3"
+tokio.workspace = true
+
+# Tracing (primary API)
+tracing.workspace = true
+tracing-opentelemetry.workspace = true
+
+# OpenTelemetry (for context propagation and SDK types)
+opentelemetry.workspace = true
+opentelemetry_sdk.workspace = true
+
+# Lambda runtime
+lambda_runtime.workspace = true
+
+# Lambda event types (feature-gated)
+aws_lambda_events = { version = "0.16", default-features = false, features = [] }
+
+# HTTP types
+http = "1"
+opentelemetry-semantic-conventions = { version = "0.31", features = ["semconv_experimental"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full", "test-util", "macros"] }
+tokio-test = "0.4"
+opentelemetry-stdout = "0.27"
+serde_json = "1"
+temp-env = "0.3"
+serial_test = "3.2"
+aws_lambda_events = { version = "0.16", features = ["apigw", "sqs", "sns"] }
+chrono.workspace = true
+
+[features]
+default = ["http", "sqs"]
+# Event type extractors
+http = ["aws_lambda_events/apigw"]
+sqs = ["aws_lambda_events/sqs"]
+sns = ["aws_lambda_events/sns"]
+# All extractors
+full = ["http", "sqs", "sns"]
+# Expose internal parsing functions for fuzzing (not part of public API)
+fuzz = ["http", "sqs", "sns"]
