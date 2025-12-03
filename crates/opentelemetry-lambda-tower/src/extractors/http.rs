@@ -351,21 +351,20 @@ mod tests {
         let mut headers = HeaderMap::new();
         headers.insert("content-type", HeaderValue::from_static("application/json"));
 
-        ApiGatewayV2httpRequest {
-            headers,
-            raw_path: Some("/users/123".to_string()),
-            route_key: Some("GET /users/{id}".to_string()),
-            raw_query_string: Some("foo=bar".to_string()),
-            request_context: ApiGatewayV2httpRequestContext {
-                http: ApiGatewayV2httpRequestContextHttpDescription {
-                    method: http::Method::GET,
-                    source_ip: Some("192.168.1.1".to_string()),
-                    ..Default::default()
-                },
-                ..Default::default()
-            },
-            ..Default::default()
-        }
+        let mut http_desc = ApiGatewayV2httpRequestContextHttpDescription::default();
+        http_desc.method = http::Method::GET;
+        http_desc.source_ip = Some("192.168.1.1".to_string());
+
+        let mut request_context = ApiGatewayV2httpRequestContext::default();
+        request_context.http = http_desc;
+
+        let mut event = ApiGatewayV2httpRequest::default();
+        event.headers = headers;
+        event.raw_path = Some("/users/123".to_string());
+        event.route_key = Some("GET /users/{id}".to_string());
+        event.raw_query_string = Some("foo=bar".to_string());
+        event.request_context = request_context;
+        event
     }
 
     fn create_test_lambda_context() -> LambdaContext {
