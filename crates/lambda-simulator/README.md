@@ -2,6 +2,8 @@
 
 High-fidelity AWS Lambda Runtime API simulator for testing Lambda runtimes and extensions locally.
 
+![Lambda Simulator Demo](assets/demo.gif)
+
 ## Overview
 
 This crate provides a simulator that implements the AWS Lambda Runtime API, Extensions API, and Telemetry API, allowing you to test Lambda runtimes and extensions without deploying to AWS. It's particularly useful for:

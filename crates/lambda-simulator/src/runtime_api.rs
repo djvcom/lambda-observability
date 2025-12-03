@@ -92,7 +92,12 @@ fn safe_header_insert(
 /// their /next endpoint) following the runtime's response submission.
 async fn next_invocation(State(state): State<RuntimeApiState>) -> Response {
     // Mark initialized on first call to /next - this ends the extension registration phase
+    let was_first_call = !state.runtime.is_initialized().await;
     state.runtime.mark_initialized().await;
+
+    if was_first_call {
+        tracing::info!(target: "lambda_lifecycle", "🚀 Runtime ready (first /next call)");
+    }
 
     // Emit init telemetry on first call to /next
     if !state.runtime.mark_init_telemetry_emitted() {
@@ -143,7 +148,8 @@ async fn next_invocation(State(state): State<RuntimeApiState>) -> Response {
             .broadcast_event(init_report_event, TelemetryEventType::Platform)
             .await;
 
-        tracing::debug!("Emitted init telemetry: duration={:.2}ms", init_duration_ms);
+        tracing::info!(target: "lambda_lifecycle", "📋 platform.initRuntimeDone (duration: {:.1}ms)", init_duration_ms);
+        tracing::info!(target: "lambda_lifecycle", "📋 platform.initReport");
     }
 
     let invocation = state.runtime.next_invocation().await;
@@ -172,10 +178,7 @@ async fn next_invocation(State(state): State<RuntimeApiState>) -> Response {
         .broadcast_event(platform_start_event, TelemetryEventType::Platform)
         .await;
 
-    tracing::debug!(
-        "Emitted platform.start for request_id={}",
-        invocation.aws_request_id
-    );
+    tracing::info!(target: "lambda_lifecycle", "▶️  platform.start (request_id: {})", &invocation.aws_request_id[..8]);
 
     let mut headers = HeaderMap::new();
 
@@ -336,6 +339,8 @@ async fn invocation_response(
             .broadcast_event(runtime_done_event, TelemetryEventType::Platform)
             .await;
 
+        tracing::info!(target: "lambda_lifecycle", "✅ platform.runtimeDone (status: success, duration: {:.1}ms)", duration_ms);
+
         state.readiness.mark_runtime_done(&request_id).await;
 
         spawn_report_task(
@@ -380,7 +385,7 @@ fn spawn_report_task(
         }
 
         let extensions_ready_at = Utc::now();
-        let extension_overhead_ms = state
+        let _extension_overhead_ms = state
             .readiness
             .get_extension_overhead_ms(&request_id)
             .await
@@ -406,10 +411,11 @@ fn spawn_report_task(
             tracing: Some(trace_context),
         };
 
-        tracing::debug!(
-            "Emitting platform.report for {} with extension_overhead_ms={:.2}",
-            request_id,
-            extension_overhead_ms
+        tracing::info!(
+            target: "lambda_lifecycle",
+            "📊 platform.report (billed: {}ms, max_memory: {}MB)",
+            billed_duration_ms,
+            state.config.memory_size_mb / 2
         );
 
         let report_event = TelemetryEvent {
@@ -425,7 +431,9 @@ fn spawn_report_task(
 
         state.readiness.cleanup_invocation(&request_id).await;
 
-        let _ = state.freeze.freeze_at_epoch(freeze_epoch);
+        if state.freeze.freeze_at_epoch(freeze_epoch).is_ok() {
+            tracing::info!(target: "lambda_lifecycle", "🧊 Environment frozen (SIGSTOP)");
+        }
     });
 }
 
@@ -537,6 +545,8 @@ async fn invocation_error(
             .telemetry
             .broadcast_event(runtime_done_event, TelemetryEventType::Platform)
             .await;
+
+        tracing::info!(target: "lambda_lifecycle", "❌ platform.runtimeDone (status: error, type: {})", error_type);
 
         state.readiness.mark_runtime_done(&request_id).await;
 

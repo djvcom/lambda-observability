@@ -452,6 +452,12 @@ impl SimulatorBuilder {
             .broadcast_event(init_start_event, TelemetryEventType::Platform)
             .await;
 
+        tracing::info!(target: "lambda_lifecycle", "");
+        tracing::info!(target: "lambda_lifecycle", "═══════════════════════════════════════════════════════════");
+        tracing::info!(target: "lambda_lifecycle", "  INIT PHASE");
+        tracing::info!(target: "lambda_lifecycle", "═══════════════════════════════════════════════════════════");
+        tracing::info!(target: "lambda_lifecycle", "📋 platform.initStart (function: {})", config.function_name);
+
         Ok(Simulator {
             runtime_state,
             extension_state,
@@ -558,11 +564,19 @@ impl Simulator {
     /// # }
     /// ```
     pub async fn enqueue(&self, invocation: Invocation) -> String {
+        if self.freeze_state.is_frozen() {
+            tracing::info!(target: "lambda_lifecycle", "🔥 Thawing environment (SIGCONT)");
+        }
         if let Err(e) = self.freeze_state.unfreeze() {
             tracing::warn!("Failed to unfreeze processes before invocation: {}", e);
         }
 
         let request_id = invocation.request_id.clone();
+
+        tracing::info!(target: "lambda_lifecycle", "");
+        tracing::info!(target: "lambda_lifecycle", "═══════════════════════════════════════════════════════════");
+        tracing::info!(target: "lambda_lifecycle", "  INVOKE PHASE");
+        tracing::info!(target: "lambda_lifecycle", "═══════════════════════════════════════════════════════════");
 
         let invoke_subscribers = self.extension_state.get_invoke_subscribers().await;
         self.readiness_tracker
@@ -712,6 +726,12 @@ impl Simulator {
     /// # }
     /// ```
     pub async fn graceful_shutdown(self, reason: ShutdownReason) {
+        tracing::info!(target: "lambda_lifecycle", "");
+        tracing::info!(target: "lambda_lifecycle", "═══════════════════════════════════════════════════════════");
+        tracing::info!(target: "lambda_lifecycle", "  SHUTDOWN PHASE");
+        tracing::info!(target: "lambda_lifecycle", "═══════════════════════════════════════════════════════════");
+        tracing::info!(target: "lambda_lifecycle", "⏩ Fast-forwarding to shutdown (reason: {:?})", reason);
+
         self.freeze_state.force_unfreeze();
 
         self.runtime_state.mark_shutting_down().await;

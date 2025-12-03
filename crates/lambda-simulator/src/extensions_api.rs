@@ -83,8 +83,16 @@ async fn register_extension(
 
     let extension = state
         .extensions
-        .register(extension_name, request.events)
+        .register(extension_name.clone(), request.events.clone())
         .await;
+
+    let events_str = request
+        .events
+        .iter()
+        .map(|e| format!("{:?}", e))
+        .collect::<Vec<_>>()
+        .join(", ");
+    tracing::info!(target: "lambda_lifecycle", "🔌 Extension registered: {} ({})", extension_name, events_str);
 
     let mut response_headers = HeaderMap::new();
 
@@ -147,22 +155,25 @@ async fn next_event(State(state): State<ExtensionsApiState>, headers: HeaderMap)
     };
 
     match state.extensions.get_extension(&extension_id).await {
-        Some(_) => {
+        Some(ext) => {
             state.readiness.mark_extension_ready(&extension_id).await;
 
             match state.extensions.next_event(&extension_id).await {
                 Some(event) => {
                     let is_shutdown = matches!(event, LifecycleEvent::Shutdown { .. });
-                    let response = Json(&event).into_response();
+                    let is_invoke = matches!(event, LifecycleEvent::Invoke { .. });
 
-                    if is_shutdown {
+                    if is_invoke {
+                        tracing::info!(target: "lambda_lifecycle", "📨 Extension received INVOKE: {}", ext.name);
+                    } else if is_shutdown {
+                        tracing::info!(target: "lambda_lifecycle", "🛑 Extension received SHUTDOWN: {}", ext.name);
                         state
                             .extensions
                             .mark_shutdown_acknowledged(&extension_id)
                             .await;
                     }
 
-                    response
+                    Json(&event).into_response()
                 }
                 None => {
                     if state.runtime.get_phase().await == SimulatorPhase::ShuttingDown {

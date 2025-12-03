@@ -42,6 +42,7 @@ regex = "1.12.2"
 reqwest = { workspace = true, features = ["blocking"] }
 temp-env = { version = "0.3", features = ["async_closure"] }
 tokio = { workspace = true, features = ["test-util"] }
+tracing-subscriber = { workspace = true, features = ["fmt", "ansi"] }
 
 [[bench]]
 name = "invocation"
