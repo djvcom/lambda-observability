@@ -12,6 +12,10 @@ readme = "README.md"
 keywords = ["lambda", "aws", "opentelemetry", "telemetry", "extension"]
 categories = ["development-tools::profiling"]
 
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 [[bin]]
 name = "opentelemetry-lambda-extension"
 path = "src/main.rs"

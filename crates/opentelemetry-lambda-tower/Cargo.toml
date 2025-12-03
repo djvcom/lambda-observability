@@ -12,6 +12,10 @@ readme = "README.md"
 keywords = ["lambda", "opentelemetry", "tracing", "aws", "serverless"]
 categories = ["development-tools::profiling", "web-programming"]
 
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 [dependencies]
 # Tower middleware
 tower = "0.5"

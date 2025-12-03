@@ -12,6 +12,10 @@ readme = "README.md"
 keywords = ["opentelemetry", "telemetry", "tracing", "otlp", "observability"]
 categories = ["development-tools::profiling", "development-tools::debugging"]
 
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 [dependencies]
 figment = { version = "0.10.19", features = ["env", "toml"] }
 humantime-serde = "1.1.1"

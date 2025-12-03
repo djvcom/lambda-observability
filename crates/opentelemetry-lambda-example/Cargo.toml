@@ -7,10 +7,8 @@ license.workspace = true
 authors = ["Daniel Verrall"]
 description = "Example Lambda function with OpenTelemetry instrumentation for testing the OTel extension"
 repository = "https://github.com/djvcom/lambda-observability"
-documentation = "https://docs.rs/opentelemetry-lambda-example"
 readme = "README.md"
-keywords = ["lambda", "aws", "opentelemetry", "example"]
-categories = ["development-tools::testing"]
+publish = false
 
 [dependencies]
 lambda_runtime.workspace = true
