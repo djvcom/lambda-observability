@@ -19,7 +19,7 @@ tracing.workspace = true
 opentelemetry.workspace = true
 opentelemetry_sdk.workspace = true
 opentelemetry-otlp.workspace = true
-aws_lambda_events = { version = "0.16", default-features = false, features = ["apigw", "sqs"] }
+aws_lambda_events = { version = "1.0", default-features = false, features = ["apigw", "sqs"] }
 opentelemetry-lambda-tower.workspace = true
 tower = "0.5"
 tracing-opentelemetry.workspace = true
