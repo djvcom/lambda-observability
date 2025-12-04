@@ -390,8 +390,8 @@ async fn test_telemetry_lifecycle_events() {
 
     assert!(duration >= 0.0, "Duration should be non-negative");
     assert!(
-        billed_duration >= 100,
-        "Billed duration should be at least 100ms (rounded up)"
+        billed_duration >= 1,
+        "Billed duration should be at least 1ms"
     );
 }
 
@@ -1646,9 +1646,12 @@ async fn test_duration_calculated_correctly() {
     simulator.shutdown().await;
 }
 
-/// Billed duration rounded up - billedDurationMs = ceil(duration/100)*100.
+/// Billed duration uses 1ms granularity (since December 2020).
+///
+/// AWS Lambda changed from 100ms to 1ms billing granularity in December 2020.
+/// billedDurationMs = ceil(durationMs) - rounded up to nearest millisecond.
 #[tokio::test]
-async fn test_billed_duration_rounded_up() {
+async fn test_billed_duration_1ms_granularity() {
     let simulator = Simulator::builder()
         .function_name("billed-duration-test")
         .extension_ready_timeout(Duration::from_millis(200))
@@ -1701,21 +1704,25 @@ async fn test_billed_duration_rounded_up() {
     assert!(!report_events.is_empty(), "Should have platform.report");
 
     let report = &report_events[0];
+    let duration_ms = report.record["metrics"]["durationMs"]
+        .as_f64()
+        .expect("durationMs should be present");
     let billed_duration_ms = report.record["metrics"]["billedDurationMs"]
         .as_u64()
         .expect("billedDurationMs should be present");
 
     assert!(
-        billed_duration_ms >= 100,
-        "Billed duration ({}) should be at least 100ms (Lambda minimum)",
+        billed_duration_ms >= 1,
+        "Billed duration ({}) should be at least 1ms",
         billed_duration_ms
     );
 
     assert_eq!(
-        billed_duration_ms % 100,
-        0,
-        "Billed duration ({}) should be rounded to nearest 100ms",
-        billed_duration_ms
+        billed_duration_ms,
+        duration_ms.ceil() as u64,
+        "Billed duration ({}) should be durationMs ({}) rounded up to nearest 1ms",
+        billed_duration_ms,
+        duration_ms
     );
 
     simulator.shutdown().await;

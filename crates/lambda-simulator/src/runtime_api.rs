@@ -393,7 +393,7 @@ fn spawn_report_task(
 
         let total_duration_ms =
             (extensions_ready_at - invocation_created_at).num_milliseconds() as f64;
-        let billed_duration_ms = ((total_duration_ms / 100.0).ceil() * 100.0) as u64;
+        let billed_duration_ms = total_duration_ms.ceil() as u64;
 
         let report = PlatformReport {
             request_id: request_id.clone(),
