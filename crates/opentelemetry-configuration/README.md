@@ -152,6 +152,6 @@ let _guard = OtelSdkBuilder::new()
     .build()?;
 ```
 
-## License
+## Licence
 
-Apache-2.0
+MIT

@@ -89,6 +89,9 @@ async fn demo_full_lambda_lifecycle() {
             if event.get("eventType").and_then(|v| v.as_str()) == Some("SHUTDOWN") {
                 break;
             }
+            // Simulate post-invocation telemetry work (flushing spans, etc.)
+            // This delay contributes to "extension overhead" in platform.report
+            tokio::time::sleep(Duration::from_millis(50)).await;
         }
     });
 

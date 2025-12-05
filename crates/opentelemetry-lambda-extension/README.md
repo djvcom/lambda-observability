@@ -237,4 +237,4 @@ The extension detects and adds Lambda resource attributes:
 
 ## Licence
 
-Apache-2.0
+MIT

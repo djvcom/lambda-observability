@@ -564,9 +564,7 @@ impl Simulator {
     /// # }
     /// ```
     pub async fn enqueue(&self, invocation: Invocation) -> String {
-        if self.freeze_state.is_frozen() {
-            tracing::info!(target: "lambda_lifecycle", "🔥 Thawing environment (SIGCONT)");
-        }
+        let was_frozen = self.freeze_state.is_frozen();
         if let Err(e) = self.freeze_state.unfreeze() {
             tracing::warn!("Failed to unfreeze processes before invocation: {}", e);
         }
@@ -577,6 +575,10 @@ impl Simulator {
         tracing::info!(target: "lambda_lifecycle", "═══════════════════════════════════════════════════════════");
         tracing::info!(target: "lambda_lifecycle", "  INVOKE PHASE");
         tracing::info!(target: "lambda_lifecycle", "═══════════════════════════════════════════════════════════");
+        if was_frozen {
+            tracing::info!(target: "lambda_lifecycle", "🔥 Thawing environment (SIGCONT)");
+        }
+        tracing::info!(target: "lambda_lifecycle", "▶️  platform.start (request_id: {})", &invocation.request_id[..8]);
 
         let invoke_subscribers = self.extension_state.get_invoke_subscribers().await;
         self.readiness_tracker
@@ -593,6 +595,7 @@ impl Simulator {
             },
         };
 
+        tracing::info!(target: "lambda_lifecycle", "📤 Broadcasting INVOKE event to extensions");
         self.extension_state.broadcast_event(event).await;
 
         self.runtime_state.enqueue_invocation(invocation).await;
@@ -730,7 +733,7 @@ impl Simulator {
         tracing::info!(target: "lambda_lifecycle", "═══════════════════════════════════════════════════════════");
         tracing::info!(target: "lambda_lifecycle", "  SHUTDOWN PHASE");
         tracing::info!(target: "lambda_lifecycle", "═══════════════════════════════════════════════════════════");
-        tracing::info!(target: "lambda_lifecycle", "⏩ Fast-forwarding to shutdown (reason: {:?})", reason);
+        tracing::info!(target: "lambda_lifecycle", "🛑 Shutdown initiated (reason: {:?})", reason);
 
         self.freeze_state.force_unfreeze();
 
@@ -764,6 +767,7 @@ impl Simulator {
                 deadline_ms,
             };
 
+            tracing::info!(target: "lambda_lifecycle", "📤 Broadcasting SHUTDOWN event to extensions");
             self.extension_state.broadcast_event(shutdown_event).await;
 
             let timeout = Duration::from_millis(self.config.shutdown_timeout_ms);

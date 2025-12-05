@@ -6,7 +6,7 @@ Output demo.gif
 Set Shell "bash"
 Set FontSize 14
 Set Width 900
-Set Height 700
+Set Height 850
 Set Padding 20
 Set Theme "Catppuccin Mocha"
 Set TypingSpeed 40ms
@@ -15,9 +15,9 @@ Type "# Lambda Simulator - Full Lambda Lifecycle Demo"
 Enter
 Sleep 500ms
 
-Type "cargo test -p lambda-simulator --test demo_test -- --nocapture 2>&1 | grep -v 'Compiling\|Finished\|Running.*target/debug'"
+Type "cargo test -p lambda-simulator --test demo_test --release -- --nocapture 2>&1 | grep -v 'Compiling\|Finished\|Running.*target/release'"
 Enter
 Sleep 10s
 
 # Pause at the end so viewers can read the output
-Sleep 5s
+Sleep 10s

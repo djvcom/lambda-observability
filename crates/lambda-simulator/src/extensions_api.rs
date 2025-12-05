@@ -92,7 +92,7 @@ async fn register_extension(
         .map(|e| format!("{:?}", e))
         .collect::<Vec<_>>()
         .join(", ");
-    tracing::info!(target: "lambda_lifecycle", "🔌 Extension registered: {} ({})", extension_name, events_str);
+    tracing::info!(target: "lambda_lifecycle", "🔌 Extension registered: {} (events: {})", extension_name, events_str);
 
     let mut response_headers = HeaderMap::new();
 
@@ -157,6 +157,7 @@ async fn next_event(State(state): State<ExtensionsApiState>, headers: HeaderMap)
     match state.extensions.get_extension(&extension_id).await {
         Some(ext) => {
             state.readiness.mark_extension_ready(&extension_id).await;
+            tracing::info!(target: "lambda_lifecycle", "⏳ Extension polling /next: {} (waiting)", ext.name);
 
             match state.extensions.next_event(&extension_id).await {
                 Some(event) => {

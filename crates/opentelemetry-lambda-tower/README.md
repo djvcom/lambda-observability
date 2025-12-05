@@ -171,6 +171,6 @@ The middleware records attributes following OpenTelemetry semantic conventions:
 | `sns` | No | SNS event extractor |
 | `full` | No | All extractors |
 
-## License
+## Licence
 
-Apache-2.0
+MIT

@@ -193,9 +193,4 @@ This project requires Rust 1.91.1 or later.
 
 ## Licence
 
-Licensed under either of:
-
-- Apache Licence, Version 2.0 ([LICENCE-APACHE](LICENCE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
-- MIT licence ([LICENCE-MIT](LICENCE-MIT) or http://opensource.org/licenses/MIT)
-
-at your option.
+MIT ([LICENCE](LICENCE) or http://opensource.org/licenses/MIT)

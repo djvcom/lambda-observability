@@ -2,6 +2,8 @@
 
 High-fidelity AWS Lambda Runtime API simulator for testing Lambda runtimes and extensions locally.
 
+The demo below shows two invocations with an extension that simulates 50ms of post-invocation work (e.g. flushing telemetry). Notice how the `platform.report` shows ~20ms of extension overhead added to each invocation's billed duration.
+
 ![Lambda Simulator Demo](assets/demo.gif)
 
 ## Overview
@@ -201,4 +203,4 @@ Process freezing uses POSIX signals (SIGSTOP/SIGCONT) and is not available on Wi
 
 ## Licence
 
-Apache-2.0
+MIT
