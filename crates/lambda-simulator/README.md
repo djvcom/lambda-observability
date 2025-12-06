@@ -2,9 +2,42 @@
 
 High-fidelity AWS Lambda Runtime API simulator for testing Lambda runtimes and extensions locally.
 
-The demo below shows two invocations with an extension that simulates 50ms of post-invocation work (e.g. flushing telemetry). Notice how the `platform.report` shows ~20ms of extension overhead added to each invocation's billed duration.
+```
+════════════════════════════════════════════════════════════
+  Lambda Process Freeze/Thaw Demo
+════════════════════════════════════════════════════════════
 
-![Lambda Simulator Demo](assets/demo.gif)
+🚀 Starting Lambda simulator with FreezeMode::Process...
+🔌 Spawning OpenTelemetry extension process...
+⚡ Spawning instrumented runtime process...
+[INIT] Runtime initialised (cold start)
+
+1️⃣ First invocation (cold start)...
+[INVOKE] Request 30e9500f completed
+
+❄️ Freezing processes (SIGSTOP)...
+[FREEZE] Verified: Both processes are stopped
+
+2️⃣ Second invocation (warm start, thawing processes)...
+[INVOKE] Request 4a8e9c59 completed (warm)
+
+🛑 Initiating graceful shutdown...
+[SHUTDOWN] Extension exited cleanly
+
+════════════════════════════════════════════════════════════
+  Telemetry Summary
+════════════════════════════════════════════════════════════
+   9 spans exported
+   10 metrics exported
+   18 logs exported
+```
+
+The simulator reproduces real Lambda behaviour including process freeze/thaw using SIGSTOP/SIGCONT signals. Run the demo yourself:
+
+```sh
+cargo build --workspace
+cargo test -p lambda-simulator --test freeze_demo_test -- --nocapture --ignored
+```
 
 ## Overview
 
@@ -153,7 +186,7 @@ Simulate Lambda's freeze/thaw behaviour:
 use lambda_simulator::{Simulator, FreezeMode};
 
 let simulator = Simulator::builder()
-    .freeze_mode(FreezeMode::Enabled)
+    .freeze_mode(FreezeMode::Process)
     .build()
     .await?;
 

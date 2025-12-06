@@ -23,13 +23,25 @@
 //! cargo build --workspace
 //! ```
 //!
-//! Run with: `cargo test -p lambda-simulator --test freeze_demo_test -- --nocapture`
+//! ## Running the Demo
+//!
+//! ```sh
+//! cargo test -p lambda-simulator --test freeze_demo_test -- --nocapture --ignored
+//! ```
+//!
+//! ## Interactive Mode (for VHS recordings)
+//!
+//! The test can wait for stdin input between phases, allowing VHS to control pacing:
+//! ```sh
+//! DEMO_INTERACTIVE=1 cargo test -p lambda-simulator --test freeze_demo_test -- --nocapture --ignored
+//! ```
 
 use lambda_simulator::process::{ProcessConfig, ProcessRole};
 use lambda_simulator::{
     FreezeMode, InvocationBuilder, InvocationStatus, ShutdownReason, Simulator,
 };
 use mock_collector::{MockServer, Protocol as MockProtocol};
+use std::io::{self, BufRead};
 use std::time::Duration;
 
 mod common;
@@ -46,6 +58,17 @@ const DIM: &str = "\x1b[2m";
 
 const EXPECTED_MIN_SPANS: usize = 9;
 const EXPECTED_MIN_LOGS: usize = 1;
+
+fn is_interactive() -> bool {
+    std::env::var("DEMO_INTERACTIVE").is_ok()
+}
+
+fn wait_for_input() {
+    if is_interactive() {
+        let stdin = io::stdin();
+        let _ = stdin.lock().lines().next();
+    }
+}
 
 fn find_binary(name: &str) -> String {
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".to_string());
@@ -202,6 +225,7 @@ async fn demo_freeze_thaw_with_real_processes() {
     print_event("INIT", "Runtime initialised (cold start)");
 
     tokio::time::sleep(Duration::from_millis(300)).await;
+    wait_for_input();
 
     // =========================================================================
     // First Invocation (Cold Start)
@@ -240,6 +264,8 @@ async fn demo_freeze_thaw_with_real_processes() {
         .await
         .expect("Extensions should be ready after first invocation");
 
+    wait_for_input();
+
     // =========================================================================
     // Freeze Phase
     // =========================================================================
@@ -264,6 +290,7 @@ async fn demo_freeze_thaw_with_real_processes() {
     print_event("FREEZE", "Verified: Both processes are stopped");
 
     tokio::time::sleep(Duration::from_millis(400)).await;
+    wait_for_input();
 
     // =========================================================================
     // Second Invocation (Warm Start - Thaw)
@@ -306,6 +333,8 @@ async fn demo_freeze_thaw_with_real_processes() {
         .await
         .expect("Extensions should be ready after second invocation");
 
+    wait_for_input();
+
     // =========================================================================
     // Third Invocation (Warm Start)
     // =========================================================================
@@ -347,6 +376,8 @@ async fn demo_freeze_thaw_with_real_processes() {
     // Capture telemetry before shutdown
     // =========================================================================
     let telemetry_events = simulator.get_telemetry_events().await;
+
+    wait_for_input();
 
     // =========================================================================
     // Shutdown
