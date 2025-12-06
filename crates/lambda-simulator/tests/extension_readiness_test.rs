@@ -89,8 +89,6 @@ async fn test_extension_readiness_with_single_extension() {
         .await
         .unwrap();
 
-    tokio::time::sleep(Duration::from_millis(50)).await;
-
     assert!(
         !simulator.are_extensions_ready(&request_id).await,
         "Extensions should not be ready before polling /next"
@@ -111,12 +109,23 @@ async fn test_extension_readiness_with_single_extension() {
         .await
         .unwrap();
 
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    simulator
+        .wait_for_extensions_ready(&request_id, Duration::from_secs(5))
+        .await
+        .expect("Extensions should become ready after polling /next");
 
-    assert!(
-        simulator.are_extensions_ready(&request_id).await,
-        "Extensions should be ready after polling /next"
-    );
+    simulator
+        .wait_for(
+            || async {
+                !simulator
+                    .get_telemetry_events_by_type("platform.report")
+                    .await
+                    .is_empty()
+            },
+            Duration::from_secs(5),
+        )
+        .await
+        .expect("platform.report should be emitted after extensions are ready");
 
     let report_events = simulator
         .get_telemetry_events_by_type("platform.report")
@@ -171,16 +180,12 @@ async fn test_extension_readiness_with_multiple_extensions() {
         .await
         .unwrap();
 
-    tokio::time::sleep(Duration::from_millis(50)).await;
-
     client
         .get(format!("{}/2020-01-01/extension/event/next", base_url))
         .header("Lambda-Extension-Identifier", &ext1_id)
         .send()
         .await
         .unwrap();
-
-    tokio::time::sleep(Duration::from_millis(50)).await;
 
     assert!(
         !simulator.are_extensions_ready(&request_id).await,
@@ -202,12 +207,23 @@ async fn test_extension_readiness_with_multiple_extensions() {
         .await
         .unwrap();
 
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    simulator
+        .wait_for_extensions_ready(&request_id, Duration::from_secs(5))
+        .await
+        .expect("Should be ready after all extensions poll /next");
 
-    assert!(
-        simulator.are_extensions_ready(&request_id).await,
-        "Should be ready after all extensions poll /next"
-    );
+    simulator
+        .wait_for(
+            || async {
+                !simulator
+                    .get_telemetry_events_by_type("platform.report")
+                    .await
+                    .is_empty()
+            },
+            Duration::from_secs(5),
+        )
+        .await
+        .expect("platform.report should be emitted after all extensions are ready");
 
     let report_events = simulator
         .get_telemetry_events_by_type("platform.report")
@@ -265,7 +281,18 @@ async fn test_extension_readiness_timeout() {
         .await
         .unwrap();
 
-    tokio::time::sleep(Duration::from_millis(300)).await;
+    simulator
+        .wait_for(
+            || async {
+                !simulator
+                    .get_telemetry_events_by_type("platform.report")
+                    .await
+                    .is_empty()
+            },
+            Duration::from_secs(5),
+        )
+        .await
+        .expect("platform.report should be emitted after timeout even without extension readiness");
 
     let report_events = simulator
         .get_telemetry_events_by_type("platform.report")
@@ -328,7 +355,18 @@ async fn test_no_invoke_extensions_immediate_report() {
         .await
         .unwrap();
 
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    simulator
+        .wait_for(
+            || async {
+                !simulator
+                    .get_telemetry_events_by_type("platform.report")
+                    .await
+                    .is_empty()
+            },
+            Duration::from_secs(5),
+        )
+        .await
+        .expect("platform.report should be emitted immediately with no INVOKE subscribers");
 
     let report_events = simulator
         .get_telemetry_events_by_type("platform.report")
@@ -404,7 +442,18 @@ async fn test_wait_for_extensions_ready_helper() {
         .await
         .expect("wait_for_extensions_ready should complete after extension polls");
 
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    simulator
+        .wait_for(
+            || async {
+                !simulator
+                    .get_telemetry_events_by_type("platform.report")
+                    .await
+                    .is_empty()
+            },
+            Duration::from_secs(5),
+        )
+        .await
+        .expect("platform.report should be emitted");
 
     let report_events = simulator
         .get_telemetry_events_by_type("platform.report")

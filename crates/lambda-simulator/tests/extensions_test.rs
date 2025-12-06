@@ -143,24 +143,7 @@ async fn test_extension_receives_invoke_event() {
     .await
     .unwrap();
 
-    // Start polling for events in background
-    let poll_client = client.clone();
-    let poll_url = base_url.clone();
-    let poll_ext_id = extension_id.clone();
-    let poll_handle = tokio::spawn(async move {
-        next_event_with_timeout(
-            &poll_client,
-            &poll_url,
-            &poll_ext_id,
-            Duration::from_secs(5),
-        )
-        .await
-    });
-
-    // Give the poll request time to start
-    tokio::time::sleep(Duration::from_millis(100)).await;
-
-    // Enqueue an invocation
+    // Enqueue an invocation - the extension poll will block until this arrives
     let invocation = InvocationBuilder::new()
         .payload(json!({"test": "data"}))
         .build()
@@ -169,8 +152,10 @@ async fn test_extension_receives_invoke_event() {
     let request_id = invocation.request_id.clone();
     simulator.enqueue(invocation).await;
 
-    // Wait for the event
-    let event = poll_handle.await.unwrap().unwrap();
+    // Poll for the next event - will return immediately since invocation is queued
+    let event = next_event_with_timeout(&client, &base_url, &extension_id, Duration::from_secs(5))
+        .await
+        .unwrap();
 
     // Verify it's an INVOKE event with correct data
     match event {
@@ -245,7 +230,16 @@ async fn test_combined_runtime_and_extension() {
     .await
     .unwrap();
 
-    // Start extension polling
+    // Enqueue invocation first - polls will block until this arrives
+    let invocation = InvocationBuilder::new()
+        .payload(json!({"message": "hello"}))
+        .build()
+        .unwrap();
+
+    let request_id = invocation.request_id.clone();
+    simulator.enqueue(invocation).await;
+
+    // Start concurrent polls - both will return immediately with the queued invocation
     let ext_client = client.clone();
     let ext_url = base_url.clone();
     let ext_id = extension_id.clone();
@@ -253,7 +247,6 @@ async fn test_combined_runtime_and_extension() {
         next_event_with_timeout(&ext_client, &ext_url, &ext_id, Duration::from_secs(5)).await
     });
 
-    // Start runtime polling
     let runtime_client = client.clone();
     let runtime_url = base_url.clone();
     let runtime_handle = tokio::spawn(async move {
@@ -269,18 +262,6 @@ async fn test_combined_runtime_and_extension() {
         assert_eq!(response.status(), 200);
         response.text().await.unwrap()
     });
-
-    // Give polls time to start
-    tokio::time::sleep(Duration::from_millis(100)).await;
-
-    // Enqueue invocation
-    let invocation = InvocationBuilder::new()
-        .payload(json!({"message": "hello"}))
-        .build()
-        .unwrap();
-
-    let request_id = invocation.request_id.clone();
-    simulator.enqueue(invocation).await;
 
     // Both should receive their respective data
     let ext_event = extension_handle.await.unwrap().unwrap();
@@ -618,21 +599,7 @@ async fn test_invoke_event_deadline_equals_created_at_plus_timeout() {
             .await
             .unwrap();
 
-    let poll_client = client.clone();
-    let poll_url = base_url.clone();
-    let poll_ext_id = extension_id.clone();
-    let poll_handle = tokio::spawn(async move {
-        next_event_with_timeout(
-            &poll_client,
-            &poll_url,
-            &poll_ext_id,
-            Duration::from_secs(5),
-        )
-        .await
-    });
-
-    tokio::time::sleep(Duration::from_millis(100)).await;
-
+    // Enqueue invocation first - poll will block until this arrives
     let invocation = InvocationBuilder::new()
         .payload(json!({"test": "deadline"}))
         .timeout_ms(timeout_ms)
@@ -642,7 +609,10 @@ async fn test_invoke_event_deadline_equals_created_at_plus_timeout() {
     let created_at_ms = invocation.created_at.timestamp_millis();
     simulator.enqueue(invocation).await;
 
-    let event = poll_handle.await.unwrap().unwrap();
+    // Poll for event - returns immediately since invocation is queued
+    let event = next_event_with_timeout(&client, &base_url, &extension_id, Duration::from_secs(5))
+        .await
+        .unwrap();
 
     match event {
         LifecycleEvent::Invoke { deadline_ms, .. } => {
@@ -679,26 +649,15 @@ async fn test_invoke_event_arn_has_correct_format() {
         .await
         .unwrap();
 
-    let poll_client = client.clone();
-    let poll_url = base_url.clone();
-    let poll_ext_id = extension_id.clone();
-    let poll_handle = tokio::spawn(async move {
-        next_event_with_timeout(
-            &poll_client,
-            &poll_url,
-            &poll_ext_id,
-            Duration::from_secs(5),
-        )
-        .await
-    });
-
-    tokio::time::sleep(Duration::from_millis(100)).await;
-
+    // Enqueue invocation first - poll will block until this arrives
     simulator
         .enqueue_payload(json!({"test": "arn_format"}))
         .await;
 
-    let event = poll_handle.await.unwrap().unwrap();
+    // Poll for event - returns immediately since invocation is queued
+    let event = next_event_with_timeout(&client, &base_url, &extension_id, Duration::from_secs(5))
+        .await
+        .unwrap();
 
     match event {
         LifecycleEvent::Invoke {
