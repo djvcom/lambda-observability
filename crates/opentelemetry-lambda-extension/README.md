@@ -70,6 +70,53 @@ cargo lambda build --release --extension --arm64
 # --compatible-architectures arm64
 ```
 
+### Binary Size Optimisation
+
+This extension is designed to be lightweight. With the workspace's release profile, the binary is approximately **4.4 MB** (compared to ~30 MB for the OpenTelemetry Collector Lambda distribution).
+
+The workspace `Cargo.toml` includes optimised release profiles:
+
+```toml
+[profile.release]
+lto = true           # Link-time optimisation for cross-crate inlining
+codegen-units = 1    # Better optimisation at cost of compile time
+strip = true         # Remove debug symbols
+panic = "abort"      # Remove unwinding code
+
+[profile.release-small]
+inherits = "release"
+opt-level = "z"      # Optimise for size over speed
+```
+
+| Profile | Size | Use Case |
+|---------|------|----------|
+| `--release` | ~4.4 MB | Recommended default |
+| `--profile release-small` | ~2.7 MB | When size is critical |
+
+For even smaller binaries, you can apply UPX compression to the Linux binary:
+
+```bash
+# After building with cargo-lambda
+upx --best target/lambda/extensions/opentelemetry-lambda-extension
+```
+
+This typically achieves 50-70% additional compression.
+
+#### Analysing Binary Size
+
+To identify what's contributing to binary size:
+
+```bash
+# Install cargo-bloat
+cargo install cargo-bloat
+
+# Show size by crate
+cargo bloat --release -p opentelemetry-lambda-extension --crates
+
+# Show largest functions
+cargo bloat --release -p opentelemetry-lambda-extension -n 20
+```
+
 ### Configuration
 
 Configure the extension via environment variables or a TOML config file.
