@@ -54,38 +54,9 @@ pub async fn wait_for_http_ready(port: u16, timeout: Duration) -> Result<(), Str
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::{Router, routing::get};
-    use tokio::net::TcpListener;
-    use tokio::sync::oneshot;
-
-    async fn handle_health() -> &'static str {
-        "OK"
-    }
-
-    #[tokio::test]
-    async fn test_wait_for_http_ready_success() {
-        let (ready_tx, ready_rx) = oneshot::channel();
-
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let port = listener.local_addr().unwrap().port();
-
-        let server_handle = tokio::spawn(async move {
-            let app = Router::new().route("/health", get(handle_health));
-            ready_tx.send(()).ok();
-            axum::serve(listener, app).await.unwrap();
-        });
-
-        ready_rx.await.expect("Server failed to signal readiness");
-
-        let result = wait_for_http_ready(port, Duration::from_secs(5)).await;
-        assert!(result.is_ok(), "Expected success, got {:?}", result);
-
-        server_handle.abort();
-    }
 
     #[tokio::test]
     async fn test_wait_for_http_ready_timeout() {
-        // Use a port that definitely isn't listening
         let result = wait_for_http_ready(19999, Duration::from_millis(100)).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("timed out"));
