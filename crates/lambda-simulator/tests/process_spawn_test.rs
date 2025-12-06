@@ -5,7 +5,7 @@
 //! and registering PIDs for freeze/thaw.
 
 use lambda_simulator::process::{ProcessConfig, ProcessRole};
-use lambda_simulator::{FreezeMode, InvocationStatus, SimulatorPhase, Simulator};
+use lambda_simulator::{FreezeMode, InvocationStatus, Simulator, SimulatorPhase};
 use serde_json::json;
 use std::process::Command;
 use std::time::Duration;

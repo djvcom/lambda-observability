@@ -785,7 +785,12 @@ async fn test_readiness_timeout_when_extension_never_calls_next() {
 
     simulator
         .wait_for(
-            || async { !simulator.get_telemetry_events_by_type("platform.report").await.is_empty() },
+            || async {
+                !simulator
+                    .get_telemetry_events_by_type("platform.report")
+                    .await
+                    .is_empty()
+            },
             Duration::from_secs(5),
         )
         .await
@@ -869,7 +874,12 @@ async fn test_extension_overhead_included_in_duration() {
 
     simulator
         .wait_for(
-            || async { !simulator.get_telemetry_events_by_type("platform.report").await.is_empty() },
+            || async {
+                !simulator
+                    .get_telemetry_events_by_type("platform.report")
+                    .await
+                    .is_empty()
+            },
             Duration::from_secs(5),
         )
         .await
