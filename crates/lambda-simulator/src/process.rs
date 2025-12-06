@@ -205,7 +205,9 @@ pub enum ProcessError {
     SpawnFailed(io::Error),
     /// The process terminated unexpectedly.
     Terminated {
+        /// The process ID of the terminated process.
         pid: u32,
+        /// The exit status, if available.
         status: Option<ExitStatus>,
     },
 }
