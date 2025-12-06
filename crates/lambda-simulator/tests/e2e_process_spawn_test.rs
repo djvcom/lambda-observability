@@ -63,6 +63,7 @@ fn runtime_binary_path() -> String {
 
 #[tokio::test]
 #[serial]
+#[ignore = "requires pre-built binaries: cargo build --workspace"]
 async fn test_e2e_with_real_processes() {
     let _ = tracing_subscriber::fmt()
         .with_env_filter("lambda_simulator=debug,lambda_extension=debug")
@@ -421,6 +422,7 @@ async fn test_e2e_with_real_processes() {
 
 #[tokio::test]
 #[serial]
+#[ignore = "requires pre-built binaries: cargo build --workspace"]
 async fn test_e2e_with_freeze_mode() {
     let _ = tracing_subscriber::fmt()
         .with_env_filter("lambda_simulator=debug")

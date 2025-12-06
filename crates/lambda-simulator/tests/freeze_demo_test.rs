@@ -100,6 +100,7 @@ fn print_metric(name: &str, value: &str) {
 }
 
 #[tokio::test]
+#[ignore = "requires pre-built binaries: cargo build --workspace"]
 async fn demo_freeze_thaw_with_real_processes() {
     print_header("Lambda Process Freeze/Thaw Demo");
     println!();
