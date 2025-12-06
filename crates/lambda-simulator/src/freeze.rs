@@ -31,7 +31,7 @@ pub enum FreezeMode {
 }
 
 /// Errors that can occur during freeze operations.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum FreezeError {
     /// No PIDs configured for process freezing.
     NoPidConfigured,

@@ -106,6 +106,7 @@ async fn next_invocation(State(state): State<RuntimeApiState>) -> Response {
 
     if was_first_call {
         tracing::info!(target: "lambda_lifecycle", "🚀 Runtime ready (first /next call)");
+        tracing::info!(target: "lambda_lifecycle", "⏳ Runtime polling /next (waiting for invocation)");
     }
 
     // Emit init telemetry on first call to /next
@@ -163,6 +164,8 @@ async fn next_invocation(State(state): State<RuntimeApiState>) -> Response {
 
     let invocation = state.runtime.next_invocation().await;
 
+    tracing::info!(target: "lambda_lifecycle", "📥 Runtime received invocation (request_id: {})", &invocation.aws_request_id[..8]);
+
     // Emit platform.start when the runtime receives an invocation
     let trace_context = TraceContext {
         trace_type: "X-Amzn-Trace-Id".to_string(),
@@ -186,8 +189,6 @@ async fn next_invocation(State(state): State<RuntimeApiState>) -> Response {
         .telemetry
         .broadcast_event(platform_start_event, TelemetryEventType::Platform)
         .await;
-
-    tracing::info!(target: "lambda_lifecycle", "▶️  platform.start (request_id: {})", &invocation.aws_request_id[..8]);
 
     let mut headers = HeaderMap::new();
 
@@ -406,7 +407,7 @@ fn spawn_report_task(
         }
 
         let extensions_ready_at = Utc::now();
-        let _extension_overhead_ms = state
+        let extension_overhead_ms = state
             .readiness
             .get_extension_overhead_ms(&request_id)
             .await
@@ -432,12 +433,20 @@ fn spawn_report_task(
             tracing: Some(trace_context),
         };
 
-        tracing::info!(
-            target: "lambda_lifecycle",
-            "📊 platform.report (billed: {}ms, max_memory: {}MB)",
-            billed_duration_ms,
-            state.config.memory_size_mb / 2
-        );
+        if extension_overhead_ms >= 1.0 {
+            tracing::info!(
+                target: "lambda_lifecycle",
+                "📊 platform.report (billed: {}ms, extension overhead: {:.0}ms)",
+                billed_duration_ms,
+                extension_overhead_ms
+            );
+        } else {
+            tracing::info!(
+                target: "lambda_lifecycle",
+                "📊 platform.report (billed: {}ms)",
+                billed_duration_ms
+            );
+        }
 
         let report_event = TelemetryEvent {
             time: Utc::now(),
@@ -452,7 +461,7 @@ fn spawn_report_task(
 
         state.readiness.cleanup_invocation(&request_id).await;
 
-        if state.freeze.freeze_at_epoch(freeze_epoch).is_ok() {
+        if state.freeze.freeze_at_epoch(freeze_epoch) == Ok(true) {
             tracing::info!(target: "lambda_lifecycle", "🧊 Environment frozen (SIGSTOP)");
         }
     });

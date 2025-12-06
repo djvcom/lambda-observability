@@ -114,4 +114,4 @@ All handlers accept a JSON payload with these optional fields:
 
 ## Licence
 
-Apache-2.0
+MIT
