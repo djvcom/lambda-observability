@@ -2,35 +2,7 @@
 
 High-fidelity AWS Lambda Runtime API simulator for testing Lambda runtimes and extensions locally.
 
-```
-════════════════════════════════════════════════════════════
-  Lambda Process Freeze/Thaw Demo
-════════════════════════════════════════════════════════════
-
-🚀 Starting Lambda simulator with FreezeMode::Process...
-🔌 Spawning OpenTelemetry extension process...
-⚡ Spawning instrumented runtime process...
-[INIT] Runtime initialised (cold start)
-
-1️⃣ First invocation (cold start)...
-[INVOKE] Request 30e9500f completed
-
-❄️ Freezing processes (SIGSTOP)...
-[FREEZE] Verified: Both processes are stopped
-
-2️⃣ Second invocation (warm start, thawing processes)...
-[INVOKE] Request 4a8e9c59 completed (warm)
-
-🛑 Initiating graceful shutdown...
-[SHUTDOWN] Extension exited cleanly
-
-════════════════════════════════════════════════════════════
-  Telemetry Summary
-════════════════════════════════════════════════════════════
-   9 spans exported
-   10 metrics exported
-   18 logs exported
-```
+![Lambda Simulator Freeze/Thaw Demo](assets/freeze_demo.gif)
 
 The simulator reproduces real Lambda behaviour including process freeze/thaw using SIGSTOP/SIGCONT signals. Run the demo yourself:
 
