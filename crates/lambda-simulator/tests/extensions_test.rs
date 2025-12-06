@@ -783,7 +783,13 @@ async fn test_readiness_timeout_when_extension_never_calls_next() {
         .await
         .unwrap();
 
-    tokio::time::sleep(Duration::from_millis(300)).await;
+    simulator
+        .wait_for(
+            || async { !simulator.get_telemetry_events_by_type("platform.report").await.is_empty() },
+            Duration::from_secs(5),
+        )
+        .await
+        .expect("Should receive platform.report event");
 
     let report_events = simulator
         .get_telemetry_events_by_type("platform.report")
@@ -861,7 +867,13 @@ async fn test_extension_overhead_included_in_duration() {
         .await
         .unwrap();
 
-    tokio::time::sleep(Duration::from_millis(200)).await;
+    simulator
+        .wait_for(
+            || async { !simulator.get_telemetry_events_by_type("platform.report").await.is_empty() },
+            Duration::from_secs(5),
+        )
+        .await
+        .expect("Should receive platform.report event");
 
     let report_events = simulator
         .get_telemetry_events_by_type("platform.report")
