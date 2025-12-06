@@ -24,7 +24,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::{Mutex, RwLock, oneshot};
 use tower::Service;
 
 /// Shared state for extension services.
@@ -45,14 +45,26 @@ pub struct ExtensionState {
     /// `EventsService` acquires a write lock on SHUTDOWN before final flush.
     /// This ensures all in-flight telemetry is processed before shutdown.
     processing_lock: RwLock<()>,
+    /// Channel to signal that shutdown processing is complete.
+    ///
+    /// The sender is stored in a Mutex so it can be taken when shutdown occurs.
+    /// The receiver should be used with `tokio::select!` to exit the event loop.
+    shutdown_tx: Mutex<Option<oneshot::Sender<()>>>,
 }
 
 impl ExtensionState {
     /// Creates new extension state with the given configuration and resource.
-    pub fn new(config: Config, resource: Resource) -> Result<Self, crate::exporter::ExportError> {
+    ///
+    /// Returns the state and a receiver that will be signalled when shutdown is complete.
+    /// Use the receiver with `tokio::select!` to exit the event loop gracefully.
+    pub fn new(
+        config: Config,
+        resource: Resource,
+    ) -> Result<(Self, oneshot::Receiver<()>), crate::exporter::ExportError> {
         let exporter = OtlpExporter::new(config.exporter.clone())?;
+        let (shutdown_tx, shutdown_rx) = oneshot::channel();
 
-        Ok(Self {
+        let state = Self {
             aggregator: Arc::new(SignalAggregator::new(config.flush.clone())),
             exporter: Arc::new(exporter),
             flush_manager: Arc::new(Mutex::new(FlushManager::new(config.flush.clone()))),
@@ -60,7 +72,20 @@ impl ExtensionState {
             metrics_converter: MetricsConverter::new(resource),
             config,
             processing_lock: RwLock::new(()),
-        })
+            shutdown_tx: Mutex::new(Some(shutdown_tx)),
+        };
+
+        Ok((state, shutdown_rx))
+    }
+
+    /// Signals that shutdown processing is complete.
+    ///
+    /// This should be called after `final_flush()` to allow the event loop to exit.
+    pub async fn signal_shutdown_complete(&self) {
+        if let Some(tx) = self.shutdown_tx.lock().await.take() {
+            let _ = tx.send(());
+            tracing::debug!("Shutdown complete signal sent");
+        }
     }
 
     /// Performs a flush of all pending signals to the exporter.
@@ -193,6 +218,9 @@ impl Service<LambdaEvent> for EventsService {
 
                     // Final flush of all signals
                     state.final_flush().await;
+
+                    // Signal shutdown complete to exit the event loop gracefully
+                    state.signal_shutdown_complete().await;
                 }
             }
 
@@ -235,6 +263,11 @@ impl Service<Vec<LambdaTelemetry>> for TelemetryService {
 
             tracing::debug!(count = events.len(), "Processing telemetry events");
 
+            // Check if any event is a RuntimeDone (signals end of invocation)
+            let has_runtime_done = events
+                .iter()
+                .any(|e| matches!(e.record, LambdaTelemetryRecord::PlatformRuntimeDone { .. }));
+
             // Convert lambda_extension telemetry events to our internal format
             let internal_events = convert_telemetry_events(events);
 
@@ -254,6 +287,23 @@ impl Service<Vec<LambdaTelemetry>> for TelemetryService {
                         },
                     ))
                     .await;
+            }
+
+            // If we received RuntimeDone, this is the post-invoke phase.
+            // Check if we should flush based on the strategy (e.g., FlushStrategy::End).
+            if has_runtime_done {
+                let pending = state.aggregator.pending_count().await;
+                let should_flush = {
+                    let flush_manager = state.flush_manager.lock().await;
+                    flush_manager
+                        .should_flush_on_invocation_end(pending)
+                        .is_some()
+                };
+
+                if should_flush {
+                    tracing::debug!(pending, "Flushing at end of invocation (post-invoke phase)");
+                    state.flush_all().await;
+                }
             }
 
             Ok(())
@@ -375,6 +425,7 @@ mod tests {
         // This will fail if exporter can't be created, but that's fine for unit tests
         let result = ExtensionState::new(config, proto_resource);
         assert!(result.is_ok());
+        let (_state, _shutdown_rx) = result.unwrap();
     }
 
     #[test]

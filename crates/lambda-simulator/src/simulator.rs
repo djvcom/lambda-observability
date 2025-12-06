@@ -1178,6 +1178,110 @@ impl Simulator {
         self.freeze_state.register_pid(pid);
     }
 
+    /// Spawns a process with Lambda environment variables and registers it for freeze/thaw.
+    ///
+    /// This method:
+    /// 1. Injects all Lambda environment variables (from `lambda_env_vars()`)
+    /// 2. Spawns the process with the given configuration
+    /// 3. Automatically registers the PID for freeze/thaw if `FreezeMode::Process` is enabled
+    ///
+    /// The spawned process will be automatically terminated when the returned
+    /// `ManagedProcess` is dropped.
+    ///
+    /// # Arguments
+    ///
+    /// * `binary_path` - Path to the executable binary
+    /// * `role` - Whether this is a runtime or extension process
+    ///
+    /// # Errors
+    ///
+    /// Returns `ProcessError::BinaryNotFound` if the binary doesn't exist.
+    /// Returns `ProcessError::SpawnFailed` if the process fails to start.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use lambda_simulator::{Simulator, FreezeMode};
+    /// use lambda_simulator::process::ProcessRole;
+    ///
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let simulator = Simulator::builder()
+    ///     .freeze_mode(FreezeMode::Process)
+    ///     .build()
+    ///     .await?;
+    ///
+    /// // Spawn a runtime process
+    /// // In tests, use env!("CARGO_BIN_EXE_<name>") for binary path resolution
+    /// let runtime = simulator.spawn_process(
+    ///     "/path/to/runtime",
+    ///     ProcessRole::Runtime,
+    /// )?;
+    ///
+    /// println!("Runtime PID: {}", runtime.pid());
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn spawn_process(
+        &self,
+        binary_path: impl Into<std::path::PathBuf>,
+        role: crate::process::ProcessRole,
+    ) -> Result<crate::process::ManagedProcess, crate::process::ProcessError> {
+        let config = crate::process::ProcessConfig::new(binary_path, role);
+        self.spawn_process_with_config(config)
+    }
+
+    /// Spawns a process with custom configuration.
+    ///
+    /// This is like `spawn_process` but allows full control over the process
+    /// configuration, including additional environment variables and arguments.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use lambda_simulator::Simulator;
+    /// use lambda_simulator::process::{ProcessConfig, ProcessRole};
+    ///
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let simulator = Simulator::builder().build().await?;
+    ///
+    /// let config = ProcessConfig::new("/path/to/runtime", ProcessRole::Runtime)
+    ///     .env("CUSTOM_VAR", "value")
+    ///     .arg("--verbose")
+    ///     .inherit_stdio(false);
+    ///
+    /// let runtime = simulator.spawn_process_with_config(config)?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn spawn_process_with_config(
+        &self,
+        config: crate::process::ProcessConfig,
+    ) -> Result<crate::process::ManagedProcess, crate::process::ProcessError> {
+        let lambda_env = self.lambda_env_vars();
+        let process = crate::process::spawn_process(config, lambda_env)?;
+
+        if self.freeze_state.mode() == FreezeMode::Process {
+            self.register_freeze_pid(process.pid());
+            tracing::info!(
+                target: "lambda_lifecycle",
+                "📦 Spawned {} process: {} (PID: {}, registered for freeze/thaw)",
+                process.role(),
+                process.binary_name(),
+                process.pid()
+            );
+        } else {
+            tracing::info!(
+                target: "lambda_lifecycle",
+                "📦 Spawned {} process: {} (PID: {})",
+                process.role(),
+                process.binary_name(),
+                process.pid()
+            );
+        }
+
+        Ok(process)
+    }
+
     /// Waits for all extensions to signal readiness for a specific invocation.
     ///
     /// Extensions signal readiness by polling the `/next` endpoint after

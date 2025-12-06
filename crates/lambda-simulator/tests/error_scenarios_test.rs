@@ -632,3 +632,116 @@ async fn test_slow_telemetry_endpoint_does_not_block_invocations() {
 
     simulator.shutdown().await;
 }
+
+/// Response exceeding 6MB returns 413 Payload Too Large.
+///
+/// AWS Lambda enforces a 6 MB response payload limit for synchronous invocations.
+/// The simulator should reject oversized responses to catch issues during testing.
+#[tokio::test]
+async fn test_response_exceeding_6mb_returns_payload_too_large() {
+    let simulator = Simulator::builder()
+        .function_name("test-function")
+        .build()
+        .await
+        .expect("Failed to start simulator");
+
+    let runtime_api_url = simulator.runtime_api_url();
+    let client = Client::new();
+
+    let invocation = InvocationBuilder::new()
+        .payload(json!({"test": "oversized"}))
+        .build()
+        .unwrap();
+
+    let request_id = invocation.request_id.clone();
+    simulator.enqueue(invocation).await;
+
+    let next_url = format!("{}/2018-06-01/runtime/invocation/next", runtime_api_url);
+    let _ = client
+        .get(&next_url)
+        .send()
+        .await
+        .expect("Failed to get invocation");
+
+    let response_url = format!(
+        "{}/2018-06-01/runtime/invocation/{}/response",
+        runtime_api_url, request_id
+    );
+
+    let oversized_payload = "a".repeat(6 * 1024 * 1024 + 1);
+    let oversized_json = format!(r#"{{"data": "{}"}}"#, oversized_payload);
+
+    let response = client
+        .post(&response_url)
+        .header("Content-Type", "application/json")
+        .body(oversized_json)
+        .send()
+        .await
+        .expect("Failed to send oversized response");
+
+    assert_eq!(
+        response.status(),
+        413,
+        "Oversized response should return 413 Payload Too Large"
+    );
+
+    let error_text = response.text().await.unwrap();
+    assert!(
+        error_text.contains("6 MB") || error_text.contains("6MB"),
+        "Error message should mention 6 MB limit: {}",
+        error_text
+    );
+
+    simulator.shutdown().await;
+}
+
+/// Response just under 6MB limit is accepted.
+///
+/// Verifies that responses at the boundary (just under 6 MB) are accepted.
+#[tokio::test]
+async fn test_response_just_under_6mb_is_accepted() {
+    let simulator = Simulator::builder()
+        .function_name("test-function")
+        .build()
+        .await
+        .expect("Failed to start simulator");
+
+    let runtime_api_url = simulator.runtime_api_url();
+    let client = Client::new();
+
+    let invocation = InvocationBuilder::new()
+        .payload(json!({"test": "boundary"}))
+        .build()
+        .unwrap();
+
+    let request_id = invocation.request_id.clone();
+    simulator.enqueue(invocation).await;
+
+    let next_url = format!("{}/2018-06-01/runtime/invocation/next", runtime_api_url);
+    let _ = client
+        .get(&next_url)
+        .send()
+        .await
+        .expect("Failed to get invocation");
+
+    let response_url = format!(
+        "{}/2018-06-01/runtime/invocation/{}/response",
+        runtime_api_url, request_id
+    );
+
+    let response = client
+        .post(&response_url)
+        .header("Content-Type", "application/json")
+        .body(r#"{"status": "ok"}"#)
+        .send()
+        .await
+        .expect("Failed to send small response");
+
+    assert_eq!(
+        response.status(),
+        202,
+        "Small response should be accepted with 202"
+    );
+
+    simulator.shutdown().await;
+}

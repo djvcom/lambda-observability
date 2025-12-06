@@ -1,5 +1,6 @@
 //! Future implementation that manages span lifecycle and flushing.
 
+use opentelemetry_sdk::logs::SdkLoggerProvider;
 use opentelemetry_sdk::trace::SdkTracerProvider;
 use opentelemetry_semantic_conventions::attribute::{ERROR_MESSAGE, OTEL_STATUS_CODE};
 use pin_project::pin_project;
@@ -30,6 +31,7 @@ pub struct OtelTracingFuture<F, T, E> {
     flush_future: Option<Pin<Box<dyn Future<Output = ()> + Send>>>,
     span: Option<Span>,
     tracer_provider: Option<Arc<SdkTracerProvider>>,
+    logger_provider: Option<Arc<SdkLoggerProvider>>,
     flush_on_end: bool,
     flush_timeout: Duration,
     pending_result: Option<Result<T, E>>,
@@ -41,6 +43,7 @@ impl<F, T, E> OtelTracingFuture<F, T, E> {
         inner: F,
         span: Span,
         tracer_provider: Option<Arc<SdkTracerProvider>>,
+        logger_provider: Option<Arc<SdkLoggerProvider>>,
         flush_on_end: bool,
         flush_timeout: Duration,
     ) -> Self {
@@ -49,6 +52,7 @@ impl<F, T, E> OtelTracingFuture<F, T, E> {
             flush_future: None,
             span: Some(span),
             tracer_provider,
+            logger_provider,
             flush_on_end,
             flush_timeout,
             pending_result: None,
@@ -67,7 +71,16 @@ where
         let mut this = self.project();
 
         if this.pending_result.is_none() {
-            match this.inner.poll(cx) {
+            // Enter the span while polling the inner future so that any
+            // child spans created during the poll have the correct parent.
+            let poll_result = if let Some(span) = this.span.as_ref() {
+                let _guard = span.enter();
+                this.inner.poll(cx)
+            } else {
+                this.inner.poll(cx)
+            };
+
+            match poll_result {
                 Poll::Ready(result) => {
                     if let Some(span) = this.span.as_ref() {
                         match &result {
@@ -81,15 +94,23 @@ where
                         }
                     }
 
+                    // Drop the span to close it before flushing. This is critical
+                    // because OpenTelemetry only exports spans after they're closed.
                     let _ = this.span.take();
 
+                    let tracer_provider = this.tracer_provider.take();
+                    let logger_provider = this.logger_provider.take();
+
                     if *this.flush_on_end
-                        && let Some(provider) = this.tracer_provider.take()
+                        && (tracer_provider.is_some() || logger_provider.is_some())
                     {
                         let timeout = *this.flush_timeout;
                         let flush_future = Box::pin(async move {
-                            let _ = tokio::time::timeout(timeout, flush_tracer_provider(provider))
-                                .await;
+                            let _ = tokio::time::timeout(
+                                timeout,
+                                flush_providers(tracer_provider, logger_provider),
+                            )
+                            .await;
                         });
                         *this.flush_future = Some(flush_future);
                         *this.pending_result = Some(result);
@@ -123,9 +144,16 @@ where
     }
 }
 
-/// Flushes the tracer provider to ensure spans are exported.
-async fn flush_tracer_provider(provider: Arc<SdkTracerProvider>) {
-    if let Err(e) = provider.force_flush() {
+/// Flushes both tracer and logger providers to ensure telemetry is exported.
+async fn flush_providers(
+    tracer_provider: Option<Arc<SdkTracerProvider>>,
+    logger_provider: Option<Arc<SdkLoggerProvider>>,
+) {
+    if let Some(Err(e)) = tracer_provider.map(|p| p.force_flush()) {
         tracing::warn!(target: "otel_lifecycle", error = ?e, "Failed to flush tracer provider");
+    }
+
+    if let Some(Err(e)) = logger_provider.map(|p| p.force_flush()) {
+        tracing::warn!(target: "otel_lifecycle", error = ?e, "Failed to flush logger provider");
     }
 }

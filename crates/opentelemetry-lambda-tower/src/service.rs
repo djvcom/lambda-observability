@@ -4,6 +4,7 @@ use crate::cold_start::check_cold_start;
 use crate::extractor::TraceContextExtractor;
 use crate::future::OtelTracingFuture;
 use lambda_runtime::LambdaEvent;
+use opentelemetry_sdk::logs::SdkLoggerProvider;
 use opentelemetry_sdk::trace::SdkTracerProvider;
 use opentelemetry_semantic_conventions::attribute::{
     CLOUD_ACCOUNT_ID, CLOUD_PROVIDER, CLOUD_REGION, FAAS_MAX_MEMORY, FAAS_NAME, FAAS_VERSION,
@@ -12,7 +13,7 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
 use tower::Service;
-use tracing::{Instrument, Span, instrument::Instrumented};
+use tracing::Span;
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 /// Tower service that instruments Lambda handlers with OpenTelemetry tracing.
@@ -32,6 +33,7 @@ pub struct OtelTracingService<S, E> {
     inner: S,
     extractor: E,
     tracer_provider: Option<Arc<SdkTracerProvider>>,
+    logger_provider: Option<Arc<SdkLoggerProvider>>,
     flush_on_end: bool,
     flush_timeout: Duration,
 }
@@ -42,6 +44,7 @@ impl<S, E> OtelTracingService<S, E> {
         inner: S,
         extractor: E,
         tracer_provider: Option<Arc<SdkTracerProvider>>,
+        logger_provider: Option<Arc<SdkLoggerProvider>>,
         flush_on_end: bool,
         flush_timeout: Duration,
     ) -> Self {
@@ -49,6 +52,7 @@ impl<S, E> OtelTracingService<S, E> {
             inner,
             extractor,
             tracer_provider,
+            logger_provider,
             flush_on_end,
             flush_timeout,
         }
@@ -64,7 +68,7 @@ where
 {
     type Response = S::Response;
     type Error = S::Error;
-    type Future = OtelTracingFuture<Instrumented<S::Future>, S::Response, S::Error>;
+    type Future = OtelTracingFuture<S::Future, S::Response, S::Error>;
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         self.inner.poll_ready(cx)
@@ -112,13 +116,20 @@ where
         // Reconstruct the event for the inner service
         let event = LambdaEvent::new(payload, lambda_ctx);
 
-        // Call inner service with the span active
-        let future = self.inner.call(event).instrument(span.clone());
+        // Call inner service with the span as parent context.
+        // We pass the inner future directly without .instrument() so that we
+        // have the only reference to the span. This ensures the span can be
+        // fully closed before we flush.
+        let future = {
+            let _guard = span.enter();
+            self.inner.call(event)
+        };
 
         OtelTracingFuture::new(
             future,
             span,
             self.tracer_provider.clone(),
+            self.logger_provider.clone(),
             self.flush_on_end,
             self.flush_timeout,
         )

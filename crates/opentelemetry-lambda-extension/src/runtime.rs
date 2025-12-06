@@ -69,10 +69,9 @@ impl ExtensionRuntime {
         // Create shared state for services
         // Convert SDK Resource to proto Resource for internal use
         let proto_resource = to_proto_resource(&self.resource);
-        let state = Arc::new(
-            ExtensionState::new(self.config.clone(), proto_resource)
-                .map_err(|e| RuntimeError::StateInit(Box::new(e)))?,
-        );
+        let (state, shutdown_rx) = ExtensionState::new(self.config.clone(), proto_resource)
+            .map_err(|e| RuntimeError::StateInit(Box::new(e)))?;
+        let state = Arc::new(state);
         tracing::debug!("Extension state created");
 
         // Create Tower services
@@ -112,16 +111,28 @@ impl ExtensionRuntime {
         // We always enable telemetry processing when using this method since it's
         // the recommended path for proper lifecycle handling.
         tracing::debug!("Building Extension and starting run loop");
-        let result = Extension::new()
+
+        let extension_future = Extension::new()
             .with_events_processor(events_service)
             .with_telemetry_types(&["platform", "function", "extension"])
             .with_telemetry_processor(SharedService::new(telemetry_service))
-            .run()
-            .await
-            .map_err(|e| {
-                tracing::error!(error = %e, "Extension run failed");
-                RuntimeError::EventLoop(e)
-            });
+            .run();
+
+        // Race between the extension event loop and the shutdown signal.
+        // The shutdown signal is sent after final_flush completes in the SHUTDOWN handler.
+        // This allows us to exit gracefully before the extension tries to poll /next again.
+        let result = tokio::select! {
+            result = extension_future => {
+                result.map_err(|e| {
+                    tracing::error!(error = %e, "Extension run failed");
+                    RuntimeError::EventLoop(e)
+                })
+            }
+            _ = shutdown_rx => {
+                tracing::info!("Shutdown complete, exiting event loop");
+                Ok(())
+            }
+        };
         tracing::debug!(?result, "Extension finished");
 
         self.cancel_token.cancel();

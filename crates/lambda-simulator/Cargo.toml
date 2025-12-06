@@ -23,7 +23,7 @@ http-body = "1.0"
 nix = { version = "0.30", features = ["signal", "process"] }
 parking_lot = "0.12.5"
 pin-project-lite = "0.2"
-reqwest.workspace = true
+reqwest = { workspace = true, features = ["blocking"] }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
@@ -33,13 +33,19 @@ tracing.workspace = true
 uuid = { workspace = true, features = ["v4"] }
 
 [dev-dependencies]
+aws_lambda_events = "1.0"
 bytes = "1.11"
 criterion = "0.8.0"
+hex = "0.4.3"
 http-body-util = "0.1"
 lambda_runtime = { version = "1.0", features = ["tracing"] }
+mock-collector = "0.2.5"
+opentelemetry.workspace = true
+opentelemetry-otlp.workspace = true
+opentelemetry_sdk.workspace = true
 proptest = "1.9.0"
 regex = "1.12.2"
-reqwest = { workspace = true, features = ["blocking"] }
+serial_test = "3.2.0"
 temp-env = { version = "0.3", features = ["async_closure"] }
 tokio = { workspace = true, features = ["test-util"] }
 tracing-subscriber = { workspace = true, features = ["fmt", "ansi"] }
@@ -47,3 +53,16 @@ tracing-subscriber = { workspace = true, features = ["fmt", "ansi"] }
 [[bench]]
 name = "invocation"
 harness = false
+
+[[bin]]
+name = "test_runtime"
+path = "tests/fixtures/runtime.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "test_extension"
+path = "tests/fixtures/extension.rs"
+test = false
+bench = false
+

@@ -41,8 +41,6 @@ async fn demo_full_lambda_lifecycle() {
     let runtime_api_url = simulator.runtime_api_url();
     let client = Client::new();
 
-    tokio::time::sleep(Duration::from_millis(50)).await;
-
     let extension_name = "otel-extension";
     let register_url = format!("{}/2020-01-01/extension/register", runtime_api_url);
     let register_response = client
@@ -64,7 +62,13 @@ async fn demo_full_lambda_lifecycle() {
         .unwrap()
         .to_string();
 
-    tokio::time::sleep(Duration::from_millis(50)).await;
+    simulator
+        .wait_for(
+            || async { simulator.extension_count().await >= 1 },
+            Duration::from_secs(5),
+        )
+        .await
+        .expect("Extension should register");
 
     let ext_next_url = format!("{}/2020-01-01/extension/event/next", runtime_api_url);
     let runtime_next_url = format!("{}/2018-06-01/runtime/invocation/next", runtime_api_url);
@@ -85,7 +89,6 @@ async fn demo_full_lambda_lifecycle() {
             if event.get("eventType").and_then(|v| v.as_str()) == Some("SHUTDOWN") {
                 break;
             }
-            tokio::time::sleep(Duration::from_millis(5)).await;
         }
     });
 
@@ -108,8 +111,6 @@ async fn demo_full_lambda_lifecycle() {
                 .unwrap()
                 .to_string();
 
-            tokio::time::sleep(Duration::from_millis(30)).await;
-
             let response_url = format!(
                 "{}/2018-06-01/runtime/invocation/{}/response",
                 api_url, request_id
@@ -123,9 +124,7 @@ async fn demo_full_lambda_lifecycle() {
         }
     });
 
-    tokio::time::sleep(Duration::from_millis(100)).await;
-
-    simulator
+    let request_id_1 = simulator
         .enqueue(
             InvocationBuilder::new()
                 .payload(json!({"message": "Hello, Lambda!"}))
@@ -134,9 +133,12 @@ async fn demo_full_lambda_lifecycle() {
         )
         .await;
 
-    tokio::time::sleep(Duration::from_millis(200)).await;
-
     simulator
+        .wait_for_invocation_complete(&request_id_1, Duration::from_secs(5))
+        .await
+        .expect("First invocation should complete");
+
+    let request_id_2 = simulator
         .enqueue(
             InvocationBuilder::new()
                 .payload(json!({"message": "Second invocation"}))
@@ -145,9 +147,12 @@ async fn demo_full_lambda_lifecycle() {
         )
         .await;
 
-    let _ = tokio::time::timeout(Duration::from_secs(2), runtime_task).await;
+    simulator
+        .wait_for_invocation_complete(&request_id_2, Duration::from_secs(5))
+        .await
+        .expect("Second invocation should complete");
 
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    let _ = tokio::time::timeout(Duration::from_secs(2), runtime_task).await;
 
     simulator.graceful_shutdown(ShutdownReason::Spindown).await;
 

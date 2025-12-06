@@ -1,6 +1,7 @@
 //! Tower Layer implementation for OpenTelemetry tracing.
 
 use crate::service::OtelTracingService;
+use opentelemetry_sdk::logs::SdkLoggerProvider;
 use opentelemetry_sdk::trace::SdkTracerProvider;
 use std::sync::Arc;
 use std::time::Duration;
@@ -34,6 +35,7 @@ use tower::Layer;
 pub struct OtelTracingLayer<E> {
     extractor: E,
     tracer_provider: Option<Arc<SdkTracerProvider>>,
+    logger_provider: Option<Arc<SdkLoggerProvider>>,
     flush_on_end: bool,
     flush_timeout: Duration,
 }
@@ -45,10 +47,12 @@ impl<E> OtelTracingLayer<E> {
     /// - Flush on end: enabled
     /// - Flush timeout: 5 seconds
     /// - No tracer provider (uses global provider)
+    /// - No logger provider (logs not flushed)
     pub fn new(extractor: E) -> Self {
         Self {
             extractor,
             tracer_provider: None,
+            logger_provider: None,
             flush_on_end: true,
             flush_timeout: Duration::from_secs(5),
         }
@@ -71,6 +75,7 @@ where
             inner,
             self.extractor.clone(),
             self.tracer_provider.clone(),
+            self.logger_provider.clone(),
             self.flush_on_end,
             self.flush_timeout,
         )
@@ -94,6 +99,7 @@ where
 pub struct OtelTracingLayerBuilder<E> {
     extractor: E,
     tracer_provider: Option<Arc<SdkTracerProvider>>,
+    logger_provider: Option<Arc<SdkLoggerProvider>>,
     flush_on_end: bool,
     flush_timeout: Duration,
 }
@@ -104,6 +110,7 @@ impl<E> OtelTracingLayerBuilder<E> {
         Self {
             extractor,
             tracer_provider: None,
+            logger_provider: None,
             flush_on_end: true,
             flush_timeout: Duration::from_secs(5),
         }
@@ -114,6 +121,16 @@ impl<E> OtelTracingLayerBuilder<E> {
     /// If not set, the layer will attempt to use the global tracer provider.
     pub fn tracer_provider(mut self, provider: Arc<SdkTracerProvider>) -> Self {
         self.tracer_provider = Some(provider);
+        self
+    }
+
+    /// Sets the logger provider to use for flushing.
+    ///
+    /// If not set, logs will not be explicitly flushed after each invocation.
+    /// This is required if you want to ensure logs are exported before Lambda
+    /// freezes the execution environment.
+    pub fn logger_provider(mut self, provider: Arc<SdkLoggerProvider>) -> Self {
+        self.logger_provider = Some(provider);
         self
     }
 
@@ -145,6 +162,7 @@ impl<E> OtelTracingLayerBuilder<E> {
         OtelTracingLayer {
             extractor: self.extractor,
             tracer_provider: self.tracer_provider,
+            logger_provider: self.logger_provider,
             flush_on_end: self.flush_on_end,
             flush_timeout: self.flush_timeout,
         }

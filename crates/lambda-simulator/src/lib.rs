@@ -152,6 +152,7 @@ pub(crate) mod extension_readiness;
 pub mod extensions_api;
 pub mod freeze;
 pub mod invocation;
+pub mod process;
 pub(crate) mod response_body;
 pub mod runtime_api;
 pub mod simulator;

@@ -16,7 +16,7 @@ use crate::telemetry::{
 use crate::telemetry_state::TelemetryState;
 use axum::{
     Json, Router,
-    extract::{Path, State},
+    extract::{DefaultBodyLimit, Path, State},
     http::{HeaderMap, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
     routing::{get, post},
@@ -24,6 +24,14 @@ use axum::{
 use chrono::Utc;
 use serde_json::{Value, json};
 use std::sync::Arc;
+
+/// Maximum Lambda response payload size (6 MB).
+///
+/// AWS Lambda enforces this limit for synchronous invocations. Responses
+/// exceeding this limit will be rejected with a 413 Payload Too Large error.
+///
+/// See: <https://docs.aws.amazon.com/lambda/latest/dg/gettingstarted-limits.html>
+const MAX_RESPONSE_PAYLOAD_BYTES: usize = 6 * 1024 * 1024;
 
 /// Shared state for Runtime API endpoints.
 #[derive(Clone)]
@@ -56,6 +64,7 @@ pub(crate) fn create_runtime_api_router(state: RuntimeApiState) -> Router {
             post(invocation_error),
         )
         .route("/2018-06-01/runtime/init/error", post(init_error))
+        .layer(DefaultBodyLimit::max(MAX_RESPONSE_PAYLOAD_BYTES + 1024))
         .with_state(state)
 }
 
@@ -257,6 +266,7 @@ async fn next_invocation(State(state): State<RuntimeApiState>) -> Response {
 /// spawns a background task to wait for all extensions to signal readiness
 /// before emitting `platform.report`. The HTTP response is returned immediately.
 ///
+/// Returns 413 if the response payload exceeds 6 MB.
 /// Returns 404 if the request ID is not found.
 /// Returns 400 if a response or error has already been recorded for this invocation.
 async fn invocation_response(
@@ -264,6 +274,17 @@ async fn invocation_response(
     Path(request_id): Path<String>,
     body: String,
 ) -> Response {
+    if body.len() > MAX_RESPONSE_PAYLOAD_BYTES {
+        return (
+            StatusCode::PAYLOAD_TOO_LARGE,
+            format!(
+                "Response payload size ({} bytes) exceeds Lambda's 6 MB limit",
+                body.len()
+            ),
+        )
+            .into_response();
+    }
+
     // Check if the invocation exists
     let inv_state = match state.runtime.get_invocation_state(&request_id).await {
         Some(s) => s,
