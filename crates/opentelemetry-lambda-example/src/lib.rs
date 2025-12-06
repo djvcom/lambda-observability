@@ -164,14 +164,19 @@ pub fn create_http_service(
     Error = lambda_runtime::Error,
     Future = impl std::future::Future<Output = Result<HttpResponse, lambda_runtime::Error>> + Send,
 > + Clone {
-    let provider = guard.tracer_provider().map(|p| Arc::new(p.clone()));
+    let tracer_provider = guard.tracer_provider().map(|p| Arc::new(p.clone()));
+    let logger_provider = guard.logger_provider().map(|p| Arc::new(p.clone()));
 
     let mut layer_builder = OtelTracingLayer::builder(ApiGatewayV2Extractor::new())
         .flush_on_end(true)
         .flush_timeout(Duration::from_secs(5));
 
-    if let Some(provider) = provider {
+    if let Some(provider) = tracer_provider {
         layer_builder = layer_builder.tracer_provider(provider);
+    }
+
+    if let Some(provider) = logger_provider {
+        layer_builder = layer_builder.logger_provider(provider);
     }
 
     let layer = layer_builder.build();
@@ -206,14 +211,19 @@ pub fn create_sqs_service(
     Error = lambda_runtime::Error,
     Future = impl std::future::Future<Output = Result<SqsBatchResponse, lambda_runtime::Error>> + Send,
 > + Clone {
-    let provider = guard.tracer_provider().map(|p| Arc::new(p.clone()));
+    let tracer_provider = guard.tracer_provider().map(|p| Arc::new(p.clone()));
+    let logger_provider = guard.logger_provider().map(|p| Arc::new(p.clone()));
 
     let mut layer_builder = OtelTracingLayer::builder(SqsEventExtractor::new())
         .flush_on_end(true)
         .flush_timeout(Duration::from_secs(5));
 
-    if let Some(provider) = provider {
+    if let Some(provider) = tracer_provider {
         layer_builder = layer_builder.tracer_provider(provider);
+    }
+
+    if let Some(provider) = logger_provider {
+        layer_builder = layer_builder.logger_provider(provider);
     }
 
     let layer = layer_builder.build();
@@ -252,11 +262,6 @@ pub async fn http_handler(
         "Processing HTTP request"
     );
 
-    if let Some(delay) = payload.delay_ms {
-        tracing::debug!(delay_ms = delay, "Simulating work");
-        tokio::time::sleep(Duration::from_millis(delay)).await;
-    }
-
     if payload.simulate_error {
         tracing::error!("Simulated error requested");
         return Ok(HttpResponse {
@@ -267,11 +272,7 @@ pub async fn http_handler(
         });
     }
 
-    let response_message = if payload.message.is_empty() {
-        "Hello from Lambda!".to_string()
-    } else {
-        format!("Processed: {}", payload.message)
-    };
+    let response_message = process_message(&payload.message, payload.delay_ms).await;
 
     tracing::info!(response = %response_message, "Request completed");
 
@@ -284,6 +285,31 @@ pub async fn http_handler(
         status_code: 200,
         body: serde_json::to_string(&response_body)?,
     })
+}
+
+#[tracing::instrument(skip_all, fields(message_len = message.len()))]
+async fn process_message(message: &str, delay_ms: Option<u64>) -> String {
+    tracing::info!("Starting message processing");
+
+    if let Some(delay) = delay_ms {
+        simulate_work(delay).await;
+    }
+
+    let result = if message.is_empty() {
+        "Hello from Lambda!".to_string()
+    } else {
+        format!("Processed: {}", message)
+    };
+
+    tracing::info!(result_len = result.len(), "Message processing complete");
+    result
+}
+
+#[tracing::instrument]
+async fn simulate_work(duration_ms: u64) {
+    tracing::debug!("Simulating computational work");
+    tokio::time::sleep(Duration::from_millis(duration_ms)).await;
+    tracing::debug!("Work simulation complete");
 }
 
 /// The inner SQS handler logic.
