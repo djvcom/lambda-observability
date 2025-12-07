@@ -33,8 +33,10 @@ This crate provides a simulator that implements the AWS Lambda Runtime API, Exte
 
 ```toml
 [dev-dependencies]
-lambda-simulator = "0.1"
+lambda-simulator = "0.1.0"
 ```
+
+**Minimum Supported Rust Version (MSRV):** 1.91.1
 
 ## Quick Start
 
@@ -121,7 +123,7 @@ async fn test_extension_registration() {
     ).await.unwrap();
 
     // Verify registration
-    let extensions = simulator.registered_extensions().await;
+    let extensions = simulator.get_registered_extensions().await;
     assert_eq!(extensions.len(), 1);
 }
 ```
@@ -205,6 +207,17 @@ simulator.register_pid_for_freeze(extension_pid).await;
 | Process Freezing | ✅ | ✅ | ❌ |
 
 Process freezing uses POSIX signals (SIGSTOP/SIGCONT) and is not available on Windows.
+
+## Current Limitations
+
+This simulator is designed for testing and development. Some AWS Lambda behaviours are not yet fully simulated:
+
+- **Timeout enforcement** - The `Lambda-Runtime-Deadline-Ms` header is set correctly, but invocations are not automatically terminated when they exceed their timeout
+- **Memory limits** - Memory usage is not enforced or accurately reported
+- **Concurrent invocations** - The simulator processes invocations sequentially
+- **SnapStart** - Restore events and snapshot-based initialisation are not simulated
+
+These limitations don't affect most testing scenarios, but be aware of them when validating timeout handling or resource limits.
 
 ## Licence
 

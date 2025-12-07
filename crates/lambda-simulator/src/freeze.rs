@@ -9,9 +9,8 @@
 //! includes the runtime process and all extension processes. This module supports
 //! freezing multiple PIDs to accurately simulate this behaviour.
 
-use parking_lot::RwLock;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::RwLock;
 use tokio::sync::Notify;
 
 #[cfg(unix)]
@@ -107,7 +106,7 @@ impl std::fmt::Debug for FreezeState {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("FreezeState")
             .field("mode", &self.mode)
-            .field("pids", &*self.pids.read())
+            .field("pids", &*self.pids.read().unwrap())
             .field("is_frozen", &self.is_frozen.load(Ordering::SeqCst))
             .field("freeze_epoch", &self.freeze_epoch.load(Ordering::SeqCst))
             .finish()
@@ -140,18 +139,6 @@ impl FreezeState {
         }
     }
 
-    /// Creates a new freeze state wrapped in an `Arc`.
-    ///
-    /// This is a convenience method for cases where shared ownership is needed.
-    pub fn new_shared(mode: FreezeMode, pid: Option<u32>) -> Arc<Self> {
-        Arc::new(Self::new(mode, pid))
-    }
-
-    /// Creates a new freeze state with multiple PIDs wrapped in an `Arc`.
-    pub fn with_pids_shared(mode: FreezeMode, pids: Vec<u32>) -> Arc<Self> {
-        Arc::new(Self::with_pids(mode, pids))
-    }
-
     /// Returns the current freeze mode.
     pub fn mode(&self) -> FreezeMode {
         self.mode
@@ -159,12 +146,12 @@ impl FreezeState {
 
     /// Returns the number of registered PIDs.
     pub fn pid_count(&self) -> usize {
-        self.pids.read().len()
+        self.pids.read().unwrap().len()
     }
 
     /// Returns the first configured PID, if any (for backwards compatibility).
     pub fn pid(&self) -> Option<i32> {
-        self.pids.read().first().copied()
+        self.pids.read().unwrap().first().copied()
     }
 
     /// Registers a PID to be frozen/unfrozen with the execution environment.
@@ -172,7 +159,7 @@ impl FreezeState {
     /// Call this after spawning runtime or extension processes to include them
     /// in freeze/thaw operations.
     pub fn register_pid(&self, pid: u32) {
-        self.pids.write().push(pid as i32);
+        self.pids.write().unwrap().push(pid as i32);
     }
 
     /// Returns whether the processes are currently frozen.
@@ -210,7 +197,7 @@ impl FreezeState {
             return Ok(false);
         }
 
-        let pids = self.pids.read();
+        let pids = self.pids.read().unwrap();
         if pids.is_empty() {
             return Err(FreezeError::NoPidConfigured);
         }
@@ -276,7 +263,7 @@ impl FreezeState {
             return Ok(());
         }
 
-        let pids = self.pids.read();
+        let pids = self.pids.read().unwrap();
         if pids.is_empty() {
             return Ok(());
         }
@@ -325,7 +312,7 @@ impl FreezeState {
         self.freeze_epoch.fetch_add(1, Ordering::SeqCst);
         self.is_frozen.store(false, Ordering::SeqCst);
 
-        let pids = self.pids.read();
+        let pids = self.pids.read().unwrap();
         for &pid in pids.iter() {
             let _ = kill(Pid::from_raw(pid), Signal::SIGCONT);
         }
@@ -342,13 +329,7 @@ impl FreezeState {
 
 impl Default for FreezeState {
     fn default() -> Self {
-        Self {
-            mode: FreezeMode::None,
-            pids: RwLock::new(Vec::new()),
-            is_frozen: AtomicBool::new(false),
-            freeze_epoch: AtomicU64::new(0),
-            state_changed: Notify::new(),
-        }
+        Self::new(FreezeMode::default(), None)
     }
 }
 

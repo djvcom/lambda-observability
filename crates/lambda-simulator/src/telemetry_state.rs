@@ -1,8 +1,10 @@
 //! Telemetry subscription state management.
 
 use crate::telemetry::{
-    BufferingConfig, TelemetryEvent, TelemetryEventType, TelemetrySubscription,
+    BufferingConfig, PlatformTelemetrySubscription, TelemetryEvent, TelemetryEventType,
+    TelemetrySubscription,
 };
+use chrono::Utc;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
@@ -101,13 +103,6 @@ impl TelemetryState {
         }
     }
 
-    /// Creates a new telemetry state wrapped in an `Arc`.
-    ///
-    /// This is a convenience method for cases where shared ownership is needed.
-    pub fn new_shared() -> Arc<Self> {
-        Arc::new(Self::new())
-    }
-
     /// Subscribes an extension to telemetry events.
     ///
     /// # Arguments
@@ -130,9 +125,15 @@ impl TelemetryState {
             .uri
             .replace("sandbox.localdomain", "127.0.0.1");
 
+        let subscribed_types: Vec<String> = subscription
+            .types
+            .iter()
+            .map(|t| format!("{:?}", t).to_lowercase())
+            .collect();
+
         let sub = Subscription {
             extension_id: extension_id.clone(),
-            extension_name,
+            extension_name: extension_name.clone(),
             event_types: subscription.types,
             destination_uri,
             buffering: buffering.clone(),
@@ -149,6 +150,20 @@ impl TelemetryState {
             .insert(extension_id.clone(), Vec::new());
 
         self.start_delivery_task(extension_id, buffering).await;
+
+        let subscription_event = TelemetryEvent {
+            time: Utc::now(),
+            event_type: "platform.telemetrySubscription".to_string(),
+            record: serde_json::to_value(PlatformTelemetrySubscription {
+                name: extension_name,
+                state: "Subscribed".to_string(),
+                types: subscribed_types,
+            })
+            .unwrap_or_default(),
+        };
+
+        self.broadcast_event(subscription_event, TelemetryEventType::Platform)
+            .await;
     }
 
     /// Starts a background task to deliver buffered events.

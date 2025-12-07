@@ -7,7 +7,7 @@ use crate::extension_readiness::ExtensionReadinessTracker;
 use crate::freeze::FreezeState;
 use crate::invocation::{InvocationError, InvocationResponse};
 use crate::simulator::SimulatorConfig;
-use crate::state::RuntimeState;
+use crate::state::{RecordResult, RuntimeState};
 use crate::telemetry::{
     InitReportMetrics, InitializationType, Phase, PlatformInitReport, PlatformInitRuntimeDone,
     PlatformReport, PlatformRuntimeDone, PlatformStart, ReportMetrics, RuntimeDoneMetrics,
@@ -316,13 +316,18 @@ async fn invocation_response(
         received_at,
     };
 
-    // Record the response - returns false if already completed
-    if !state.runtime.record_response(response).await {
-        return (
-            StatusCode::BAD_REQUEST,
-            "Response already submitted for this invocation",
-        )
-            .into_response();
+    match state.runtime.record_response(response).await {
+        RecordResult::Recorded => {}
+        RecordResult::AlreadyCompleted => {
+            return (
+                StatusCode::BAD_REQUEST,
+                "Response already submitted for this invocation",
+            )
+                .into_response();
+        }
+        RecordResult::NotFound => {
+            return (StatusCode::NOT_FOUND, "Unknown request ID").into_response();
+        }
     }
 
     // Proceed with telemetry emission since we successfully recorded
@@ -461,8 +466,20 @@ fn spawn_report_task(
 
         state.readiness.cleanup_invocation(&request_id).await;
 
-        if state.freeze.freeze_at_epoch(freeze_epoch) == Ok(true) {
-            tracing::info!(target: "lambda_lifecycle", "🧊 Environment frozen (SIGSTOP)");
+        match state.freeze.freeze_at_epoch(freeze_epoch) {
+            Ok(true) => {
+                tracing::info!(target: "lambda_lifecycle", "🧊 Environment frozen (SIGSTOP)");
+            }
+            Ok(false) => {
+                // Epoch mismatch - new work arrived before freeze, which is expected behaviour
+            }
+            Err(e) => {
+                tracing::error!(
+                    "Failed to freeze processes after invocation: {}. \
+                     Freeze simulation may be inaccurate.",
+                    e
+                );
+            }
         }
     });
 }
@@ -531,13 +548,18 @@ async fn invocation_error(
         received_at,
     };
 
-    // Record the error - returns false if already completed
-    if !state.runtime.record_error(error).await {
-        return (
-            StatusCode::BAD_REQUEST,
-            "Response already submitted for this invocation",
-        )
-            .into_response();
+    match state.runtime.record_error(error).await {
+        RecordResult::Recorded => {}
+        RecordResult::AlreadyCompleted => {
+            return (
+                StatusCode::BAD_REQUEST,
+                "Response already submitted for this invocation",
+            )
+                .into_response();
+        }
+        RecordResult::NotFound => {
+            return (StatusCode::NOT_FOUND, "Unknown request ID").into_response();
+        }
     }
 
     // Proceed with telemetry emission since we successfully recorded
@@ -613,5 +635,5 @@ async fn init_error(
     let error_string = format!("{}: {}", error_type, error_message);
     state.runtime.record_init_error(error_string).await;
 
-    StatusCode::ACCEPTED.into_response()
+    StatusCode::OK.into_response()
 }

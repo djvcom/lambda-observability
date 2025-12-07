@@ -4,26 +4,37 @@ use crate::invocation::{Invocation, InvocationError, InvocationResponse, Invocat
 use crate::simulator::SimulatorPhase;
 use chrono::{DateTime, Utc};
 use std::collections::{HashMap, VecDeque};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::{Mutex, Notify};
 
-/// Tracks the state of a single invocation.
+/// Result of attempting to record an invocation response or error.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RecordResult {
+    /// Successfully recorded.
+    Recorded,
+    /// Invocation was already completed (response or error already submitted).
+    AlreadyCompleted,
+    /// Invocation not found (unknown request ID).
+    NotFound,
+}
+
+/// Tracks the state of a single invocation throughout its lifecycle.
 #[derive(Debug, Clone)]
 pub struct InvocationState {
-    /// The invocation data.
+    /// The original invocation request data (payload, request ID, deadline, etc.).
     pub invocation: Invocation,
 
-    /// Current status of the invocation.
+    /// Current lifecycle status (Pending, InProgress, Success, or Error).
     pub status: InvocationStatus,
 
-    /// When the runtime started processing this invocation.
+    /// Timestamp when the runtime received this invocation via `/next`.
+    /// `None` if still pending in the queue.
     pub started_at: Option<DateTime<Utc>>,
 
-    /// Response if completed successfully.
+    /// The response payload if the invocation completed successfully.
     pub response: Option<InvocationResponse>,
 
-    /// Error if failed.
+    /// Error details if the invocation failed.
     pub error: Option<InvocationError>,
 }
 
@@ -78,13 +89,6 @@ impl RuntimeState {
             init_started_at: Utc::now(),
             init_telemetry_emitted: AtomicBool::new(false),
         }
-    }
-
-    /// Creates a new runtime state wrapped in an `Arc`.
-    ///
-    /// This is a convenience method for cases where shared ownership is needed.
-    pub fn new_shared() -> Arc<Self> {
-        Arc::new(Self::new())
     }
 
     /// Gets when the runtime state was created (init start time).
@@ -158,64 +162,42 @@ impl RuntimeState {
     ///
     /// Only records if the invocation is still in `InProgress` status.
     /// This implements "first wins" semantics - subsequent responses are ignored.
-    ///
-    /// # Arguments
-    ///
-    /// * `response` - The invocation response
-    ///
-    /// # Returns
-    ///
-    /// Returns `true` if the response was recorded, `false` if it was already
-    /// completed (response or error already recorded).
-    pub async fn record_response(&self, response: InvocationResponse) -> bool {
-        if let Some(state) = self
-            .invocation_states
-            .lock()
-            .await
-            .get_mut(&response.request_id)
-        {
-            // Only accept response if still in progress
-            if state.status != InvocationStatus::InProgress {
-                return false;
-            }
-            state.status = InvocationStatus::Success;
-            state.response = Some(response);
-            self.state_changed.notify_waiters();
-            return true;
+    pub async fn record_response(&self, response: InvocationResponse) -> RecordResult {
+        let mut states = self.invocation_states.lock().await;
+        let Some(state) = states.get_mut(&response.request_id) else {
+            return RecordResult::NotFound;
+        };
+
+        if state.status != InvocationStatus::InProgress {
+            return RecordResult::AlreadyCompleted;
         }
-        false
+
+        state.status = InvocationStatus::Success;
+        state.response = Some(response);
+        drop(states);
+        self.state_changed.notify_waiters();
+        RecordResult::Recorded
     }
 
     /// Records an invocation error.
     ///
     /// Only records if the invocation is still in `InProgress` status.
     /// This implements "first wins" semantics - subsequent errors are ignored.
-    ///
-    /// # Arguments
-    ///
-    /// * `error` - The invocation error
-    ///
-    /// # Returns
-    ///
-    /// Returns `true` if the error was recorded, `false` if it was already
-    /// completed (response or error already recorded).
-    pub async fn record_error(&self, error: InvocationError) -> bool {
-        if let Some(state) = self
-            .invocation_states
-            .lock()
-            .await
-            .get_mut(&error.request_id)
-        {
-            // Only accept error if still in progress
-            if state.status != InvocationStatus::InProgress {
-                return false;
-            }
-            state.status = InvocationStatus::Error;
-            state.error = Some(error);
-            self.state_changed.notify_waiters();
-            return true;
+    pub async fn record_error(&self, error: InvocationError) -> RecordResult {
+        let mut states = self.invocation_states.lock().await;
+        let Some(state) = states.get_mut(&error.request_id) else {
+            return RecordResult::NotFound;
+        };
+
+        if state.status != InvocationStatus::InProgress {
+            return RecordResult::AlreadyCompleted;
         }
-        false
+
+        state.status = InvocationStatus::Error;
+        state.error = Some(error);
+        drop(states);
+        self.state_changed.notify_waiters();
+        RecordResult::Recorded
     }
 
     /// Marks the runtime as initialized and transitions to Ready phase.
@@ -306,16 +288,6 @@ impl RuntimeState {
 
 impl Default for RuntimeState {
     fn default() -> Self {
-        Self {
-            pending_invocations: Mutex::new(VecDeque::new()),
-            invocation_states: Mutex::new(HashMap::new()),
-            invocation_available: Notify::new(),
-            state_changed: Notify::new(),
-            phase: Mutex::new(SimulatorPhase::Initializing),
-            phase_changed: Notify::new(),
-            init_error: Mutex::new(None),
-            init_started_at: Utc::now(),
-            init_telemetry_emitted: AtomicBool::new(false),
-        }
+        Self::new()
     }
 }
