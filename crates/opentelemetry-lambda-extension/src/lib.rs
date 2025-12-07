@@ -3,6 +3,20 @@
 //! This extension integrates with the AWS Lambda Extensions API (via the
 //! `lambda_extension` crate) to collect OpenTelemetry traces, metrics, and
 //! logs from Lambda functions and export them to configured backends.
+//!
+//! # Example
+//!
+//! ```no_run
+//! use opentelemetry_lambda_extension::{Config, RuntimeBuilder};
+//!
+//! #[tokio::main]
+//! async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//!     let config = Config::load()?;
+//!     let runtime = RuntimeBuilder::new(config).build().await?;
+//!     runtime.run().await?;
+//!     Ok(())
+//! }
+//! ```
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]

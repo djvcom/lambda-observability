@@ -4,7 +4,21 @@
 //! Configuration is loaded from (in order of priority):
 //! 1. Default values (compiled in)
 //! 2. Config file: `/var/task/otel-extension.toml` (optional)
-//! 3. Environment variables (prefix: `LAMBDA_OTEL_`)
+//! 3. Standard OpenTelemetry environment variables (`OTEL_*`)
+//! 4. Extension-specific environment variables (`LAMBDA_OTEL_*`)
+//!
+//! # Supported Standard Environment Variables
+//!
+//! The following standard OpenTelemetry environment variables are supported:
+//!
+//! | Variable | Config Path | Description |
+//! |----------|-------------|-------------|
+//! | `OTEL_EXPORTER_OTLP_ENDPOINT` | `exporter.endpoint` | OTLP endpoint URL |
+//! | `OTEL_EXPORTER_OTLP_PROTOCOL` | `exporter.protocol` | Protocol (http or grpc) |
+//! | `OTEL_EXPORTER_OTLP_HEADERS` | `exporter.headers` | Comma-separated key=value pairs |
+//! | `OTEL_EXPORTER_OTLP_COMPRESSION` | `exporter.compression` | Compression (gzip or none) |
+//!
+//! Extension-specific variables with `LAMBDA_OTEL_` prefix take precedence.
 
 use figment::{
     Figment,
@@ -103,6 +117,7 @@ impl Config {
             figment = figment.merge(Toml::file(config_path));
         }
 
+        figment = figment.merge(standard_otel_env());
         figment = figment.merge(Env::prefixed(ENV_PREFIX).split("_"));
 
         figment.extract()
@@ -343,6 +358,70 @@ impl Default for ConfigBuilder {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// Partial exporter config for standard OTEL env var overrides.
+#[derive(Debug, Default, Serialize)]
+struct PartialExporterConfig {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    endpoint: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    protocol: Option<Protocol>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    compression: Option<Compression>,
+    #[serde(skip_serializing_if = "HashMap::is_empty")]
+    headers: HashMap<String, String>,
+}
+
+/// Partial config for standard OTEL env var overrides.
+#[derive(Debug, Default, Serialize)]
+struct PartialConfig {
+    #[serde(skip_serializing_if = "is_partial_exporter_empty")]
+    exporter: PartialExporterConfig,
+}
+
+fn is_partial_exporter_empty(config: &PartialExporterConfig) -> bool {
+    config.endpoint.is_none()
+        && config.protocol.is_none()
+        && config.compression.is_none()
+        && config.headers.is_empty()
+}
+
+fn standard_otel_env() -> Serialized<PartialConfig> {
+    let mut config = PartialConfig::default();
+
+    if let Ok(endpoint) = std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT") {
+        config.exporter.endpoint = Some(endpoint);
+    }
+
+    if let Ok(protocol) = std::env::var("OTEL_EXPORTER_OTLP_PROTOCOL") {
+        config.exporter.protocol = match protocol.to_lowercase().as_str() {
+            "grpc" => Some(Protocol::Grpc),
+            "http/protobuf" | "http" => Some(Protocol::Http),
+            _ => None,
+        };
+    }
+
+    if let Ok(compression) = std::env::var("OTEL_EXPORTER_OTLP_COMPRESSION") {
+        config.exporter.compression = match compression.to_lowercase().as_str() {
+            "gzip" => Some(Compression::Gzip),
+            "none" => Some(Compression::None),
+            _ => None,
+        };
+    }
+
+    if let Ok(headers_str) = std::env::var("OTEL_EXPORTER_OTLP_HEADERS") {
+        for pair in headers_str.split(',') {
+            if let Some((key, value)) = pair.split_once('=') {
+                config
+                    .exporter
+                    .headers
+                    .insert(key.trim().to_string(), value.trim().to_string());
+            }
+        }
+    }
+
+    Serialized::defaults(config)
 }
 
 mod duration_ms {

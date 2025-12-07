@@ -412,8 +412,8 @@ fn test_otel_017_span_status_mapping() {
     let span = &request.resource_spans[0].scope_spans[0].spans[0];
     assert_eq!(
         span.status.as_ref().unwrap().code,
-        StatusCode::Ok as i32,
-        "Success status should map to StatusCode::Ok"
+        StatusCode::Unset as i32,
+        "Success status should map to StatusCode::Unset per OTel spec"
     );
 
     // Test error status
