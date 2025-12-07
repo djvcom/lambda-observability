@@ -473,7 +473,8 @@ impl OtelSdkBuilder {
     ///
     /// # Errors
     ///
-    /// Returns an error if configuration extraction fails.
+    /// Returns an error if configuration extraction fails or if the endpoint
+    /// URL is invalid.
     pub fn extract_config(&self) -> Result<OtelSdkConfig, SdkError> {
         let mut config: OtelSdkConfig = self
             .figment
@@ -485,6 +486,13 @@ impl OtelSdkBuilder {
             .resource
             .attributes
             .extend(self.resource_attributes.clone());
+
+        // Validate endpoint URL if provided
+        if let Some(ref url) = config.endpoint.url {
+            if !url.starts_with("http://") && !url.starts_with("https://") {
+                return Err(SdkError::InvalidEndpoint { url: url.clone() });
+            }
+        }
 
         Ok(config)
     }
@@ -526,6 +534,13 @@ impl OtelSdkBuilder {
 
         // Merge resource attributes that couldn't go through figment
         config.resource.attributes.extend(self.resource_attributes);
+
+        // Validate endpoint URL if provided
+        if let Some(ref url) = config.endpoint.url {
+            if !url.starts_with("http://") && !url.starts_with("https://") {
+                return Err(SdkError::InvalidEndpoint { url: url.clone() });
+            }
+        }
 
         // Detect Lambda resource attributes from environment
         config.resource.detect_from_environment();
@@ -698,5 +713,152 @@ mod tests {
     fn test_builder_custom_fallback() {
         let builder = OtelSdkBuilder::new().with_fallback(|_failure| Ok(()));
         assert!(matches!(builder.fallback, ExportFallback::Custom(_)));
+    }
+
+    #[test]
+    fn test_with_standard_env_endpoint() {
+        temp_env::with_var("OTEL_EXPORTER_OTLP_ENDPOINT", Some("http://custom:4318"), || {
+            let builder = OtelSdkBuilder::new().with_standard_env();
+            let config = builder.extract_config().unwrap();
+            assert_eq!(config.endpoint.url, Some("http://custom:4318".to_string()));
+        });
+    }
+
+    #[test]
+    fn test_with_standard_env_service_name() {
+        temp_env::with_var("OTEL_SERVICE_NAME", Some("test-service"), || {
+            let builder = OtelSdkBuilder::new().with_standard_env();
+            let config = builder.extract_config().unwrap();
+            assert_eq!(config.resource.service_name, Some("test-service".to_string()));
+        });
+    }
+
+    #[test]
+    fn test_with_standard_env_protocol_grpc() {
+        temp_env::with_var("OTEL_EXPORTER_OTLP_PROTOCOL", Some("grpc"), || {
+            let builder = OtelSdkBuilder::new().with_standard_env();
+            let config = builder.extract_config().unwrap();
+            assert_eq!(config.endpoint.protocol, Protocol::Grpc);
+        });
+    }
+
+    #[test]
+    fn test_with_standard_env_protocol_http_protobuf() {
+        temp_env::with_var("OTEL_EXPORTER_OTLP_PROTOCOL", Some("http/protobuf"), || {
+            let builder = OtelSdkBuilder::new().with_standard_env();
+            let config = builder.extract_config().unwrap();
+            assert_eq!(config.endpoint.protocol, Protocol::HttpBinary);
+        });
+    }
+
+    #[test]
+    fn test_with_standard_env_traces_disabled() {
+        temp_env::with_var("OTEL_TRACES_EXPORTER", Some("none"), || {
+            let builder = OtelSdkBuilder::new().with_standard_env();
+            let config = builder.extract_config().unwrap();
+            assert!(!config.traces.enabled);
+        });
+    }
+
+    #[test]
+    fn test_with_standard_env_metrics_disabled() {
+        temp_env::with_var("OTEL_METRICS_EXPORTER", Some("none"), || {
+            let builder = OtelSdkBuilder::new().with_standard_env();
+            let config = builder.extract_config().unwrap();
+            assert!(!config.metrics.enabled);
+        });
+    }
+
+    #[test]
+    fn test_with_standard_env_logs_disabled() {
+        temp_env::with_var("OTEL_LOGS_EXPORTER", Some("none"), || {
+            let builder = OtelSdkBuilder::new().with_standard_env();
+            let config = builder.extract_config().unwrap();
+            assert!(!config.logs.enabled);
+        });
+    }
+
+    #[test]
+    fn test_with_standard_env_multiple_vars() {
+        temp_env::with_vars(
+            [
+                ("OTEL_EXPORTER_OTLP_ENDPOINT", Some("http://collector:4317")),
+                ("OTEL_EXPORTER_OTLP_PROTOCOL", Some("grpc")),
+                ("OTEL_SERVICE_NAME", Some("multi-test")),
+                ("OTEL_TRACES_EXPORTER", Some("otlp")),
+            ],
+            || {
+                let builder = OtelSdkBuilder::new().with_standard_env();
+                let config = builder.extract_config().unwrap();
+
+                assert_eq!(
+                    config.endpoint.url,
+                    Some("http://collector:4317".to_string())
+                );
+                assert_eq!(config.endpoint.protocol, Protocol::Grpc);
+                assert_eq!(config.resource.service_name, Some("multi-test".to_string()));
+                assert!(config.traces.enabled);
+            },
+        );
+    }
+
+    #[test]
+    fn test_programmatic_overrides_env() {
+        temp_env::with_vars(
+            [
+                ("OTEL_EXPORTER_OTLP_ENDPOINT", Some("http://env:4318")),
+                ("OTEL_SERVICE_NAME", Some("env-service")),
+            ],
+            || {
+                let builder = OtelSdkBuilder::new()
+                    .with_standard_env()
+                    .endpoint("http://programmatic:4318")
+                    .service_name("programmatic-service");
+                let config = builder.extract_config().unwrap();
+
+                assert_eq!(
+                    config.endpoint.url,
+                    Some("http://programmatic:4318".to_string())
+                );
+                assert_eq!(
+                    config.resource.service_name,
+                    Some("programmatic-service".to_string())
+                );
+            },
+        );
+    }
+
+    #[test]
+    fn test_invalid_endpoint_url_rejected() {
+        let builder = OtelSdkBuilder::new().endpoint("not-a-valid-url");
+        let result = builder.extract_config();
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            matches!(err, SdkError::InvalidEndpoint { ref url } if url == "not-a-valid-url"),
+            "Expected InvalidEndpoint error, got: {:?}",
+            err
+        );
+    }
+
+    #[test]
+    fn test_valid_http_endpoint_accepted() {
+        let builder = OtelSdkBuilder::new().endpoint("http://localhost:4318");
+        let config = builder.extract_config().unwrap();
+        assert_eq!(
+            config.endpoint.url,
+            Some("http://localhost:4318".to_string())
+        );
+    }
+
+    #[test]
+    fn test_valid_https_endpoint_accepted() {
+        let builder = OtelSdkBuilder::new().endpoint("https://collector.example.com:4318");
+        let config = builder.extract_config().unwrap();
+        assert_eq!(
+            config.endpoint.url,
+            Some("https://collector.example.com:4318".to_string())
+        );
     }
 }

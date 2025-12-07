@@ -33,4 +33,11 @@ pub enum SdkError {
     /// Failed to shut down providers.
     #[error("failed to shut down providers")]
     Shutdown(#[source] opentelemetry_sdk::error::OTelSdkError),
+
+    /// Invalid endpoint URL format.
+    #[error("invalid endpoint URL: {url} (must start with http:// or https://)")]
+    InvalidEndpoint {
+        /// The invalid URL that was provided.
+        url: String,
+    },
 }
