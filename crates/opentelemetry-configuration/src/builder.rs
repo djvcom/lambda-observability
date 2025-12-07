@@ -487,7 +487,6 @@ impl OtelSdkBuilder {
             .attributes
             .extend(self.resource_attributes.clone());
 
-        // Validate endpoint URL if provided
         if let Some(ref url) = config.endpoint.url
             && !url.starts_with("http://")
             && !url.starts_with("https://")
@@ -536,7 +535,6 @@ impl OtelSdkBuilder {
         // Merge resource attributes that couldn't go through figment
         config.resource.attributes.extend(self.resource_attributes);
 
-        // Validate endpoint URL if provided
         if let Some(ref url) = config.endpoint.url
             && !url.starts_with("http://")
             && !url.starts_with("https://")
