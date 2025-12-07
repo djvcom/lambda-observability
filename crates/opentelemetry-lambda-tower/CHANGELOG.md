@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1](https://github.com/djvcom/lambda-observability/compare/opentelemetry-lambda-tower-v0.1.0...opentelemetry-lambda-tower-v0.1.1) - 2025-12-07
+
+### Other
+
+- *(opentelemetry-lambda-tower)* fix API naming in README
+
 ## [0.1.0] - 2025-12-03
 
 ### Added

@@ -1488,7 +1488,7 @@ dependencies = [
 
 [[package]]
 name = "opentelemetry-configuration"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "figment",
  "humantime-serde",
@@ -1547,7 +1547,7 @@ dependencies = [
 
 [[package]]
 name = "opentelemetry-lambda-extension"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "axum",
@@ -1591,7 +1591,7 @@ dependencies = [
 
 [[package]]
 name = "opentelemetry-lambda-tower"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "aws_lambda_events",
  "chrono",

@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1](https://github.com/djvcom/lambda-observability/compare/opentelemetry-lambda-extension-v0.1.0...opentelemetry-lambda-extension-v0.1.1) - 2025-12-07
+
+### Fixed
+
+- *(opentelemetry-lambda-extension)* correct doc example API usage
+- *(opentelemetry-lambda-extension)* improve OTel compliance and docs
+
+### Other
+
+- *(opentelemetry-lambda-extension)* update backpressure test expectation
+
 ## [0.1.0] - 2025-12-03
 
 ### Added

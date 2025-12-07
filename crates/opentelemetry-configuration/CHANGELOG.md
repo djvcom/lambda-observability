@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1](https://github.com/djvcom/lambda-observability/compare/opentelemetry-configuration-v0.1.0...opentelemetry-configuration-v0.1.1) - 2025-12-07
+
+### Added
+
+- *(opentelemetry-configuration)* complete high-priority improvements
+
+### Other
+
+- *(opentelemetry-configuration)* remove inline comments
+- remove accidentally staged TODO.md
+- *(opentelemetry-configuration)* use let-chains for clippy
+
 ## [0.1.0] - 2025-12-03
 
 ### Added
