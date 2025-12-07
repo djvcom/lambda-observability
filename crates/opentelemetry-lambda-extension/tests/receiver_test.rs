@@ -169,9 +169,8 @@ async fn test_receiver_backpressure() {
         .await
         .expect("Failed to send second request");
 
-    // When queue is full, we still return 200 OK to avoid client retries
-    // (Lambda functions don't have retry logic, so 503 would just cause errors)
-    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    // When queue is full, return 503 to signal backpressure to clients
+    assert_eq!(response.status(), reqwest::StatusCode::SERVICE_UNAVAILABLE);
 
     cancel_token.cancel();
     let _ = tokio::time::timeout(Duration::from_secs(1), server_task).await;
