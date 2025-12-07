@@ -267,11 +267,15 @@ impl SpanConverter {
             dropped_links_count: 0,
             status: Some(Status {
                 code: if runtime_done.status == "success" {
-                    status::StatusCode::Ok as i32
+                    status::StatusCode::Unset as i32
                 } else {
                     status::StatusCode::Error as i32
                 },
-                message: String::new(),
+                message: if runtime_done.status != "success" {
+                    format!("Lambda invocation {}", runtime_done.status)
+                } else {
+                    String::new()
+                },
             }),
             flags: 0,
             trace_state: String::new(),

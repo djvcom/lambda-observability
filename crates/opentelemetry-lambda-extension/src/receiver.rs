@@ -261,8 +261,8 @@ async fn handle_traces(
             StatusCode::OK
         }
         Err(mpsc::error::TrySendError::Full(_)) => {
-            tracing::warn!("Trace signal channel full, dropping data");
-            StatusCode::OK
+            tracing::warn!("Trace signal channel full, signalling backpressure");
+            StatusCode::SERVICE_UNAVAILABLE
         }
         Err(mpsc::error::TrySendError::Closed(_)) => {
             tracing::error!("Trace signal channel closed");
@@ -291,8 +291,8 @@ async fn handle_metrics(
             StatusCode::OK
         }
         Err(mpsc::error::TrySendError::Full(_)) => {
-            tracing::warn!("Metrics signal channel full, dropping data");
-            StatusCode::OK
+            tracing::warn!("Metrics signal channel full, signalling backpressure");
+            StatusCode::SERVICE_UNAVAILABLE
         }
         Err(mpsc::error::TrySendError::Closed(_)) => {
             tracing::error!("Metrics signal channel closed");
@@ -320,8 +320,8 @@ async fn handle_logs(
             StatusCode::OK
         }
         Err(mpsc::error::TrySendError::Full(_)) => {
-            tracing::warn!("Logs signal channel full, dropping data");
-            StatusCode::OK
+            tracing::warn!("Logs signal channel full, signalling backpressure");
+            StatusCode::SERVICE_UNAVAILABLE
         }
         Err(mpsc::error::TrySendError::Closed(_)) => {
             tracing::error!("Logs signal channel closed");

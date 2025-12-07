@@ -40,7 +40,7 @@ The crate provides extractors for common Lambda event types:
 | Extractor | Event Type | Feature Flag |
 |-----------|------------|--------------|
 | `ApiGatewayV2Extractor` | API Gateway HTTP API (v2) | `http` (default) |
-| `ApiGatewayProxyExtractor` | API Gateway REST API (v1) | `http` (default) |
+| `ApiGatewayV1Extractor` | API Gateway REST API (v1) | `http` (default) |
 | `SqsEventExtractor` | SQS Messages | `sqs` (default) |
 | `SnsEventExtractor` | SNS Notifications | `sns` |
 
