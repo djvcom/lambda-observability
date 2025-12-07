@@ -12,7 +12,7 @@
 //! #[tokio::main]
 //! async fn main() -> Result<(), Box<dyn std::error::Error>> {
 //!     let config = Config::load()?;
-//!     let runtime = RuntimeBuilder::new(config).build().await?;
+//!     let runtime = RuntimeBuilder::new().config(config).build();
 //!     runtime.run().await?;
 //!     Ok(())
 //! }
