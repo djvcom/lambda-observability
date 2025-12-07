@@ -11,7 +11,6 @@
 
 use chrono::{DateTime, Utc};
 use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
 use tokio::sync::{Mutex, Notify};
 
 /// Tracks extension readiness for a specific invocation.
@@ -100,13 +99,6 @@ impl ExtensionReadinessTracker {
             current_request: Mutex::new(None),
             last_completed_request: Mutex::new(None),
         }
-    }
-
-    /// Creates a new extension readiness tracker wrapped in an `Arc`.
-    ///
-    /// This is a convenience method for cases where shared ownership is needed.
-    pub fn new_shared() -> Arc<Self> {
-        Arc::new(Self::new())
     }
 
     /// Starts tracking a new invocation.
@@ -312,12 +304,7 @@ impl ExtensionReadinessTracker {
 
 impl Default for ExtensionReadinessTracker {
     fn default() -> Self {
-        Self {
-            invocations: Mutex::new(HashMap::new()),
-            readiness_changed: Notify::new(),
-            current_request: Mutex::new(None),
-            last_completed_request: Mutex::new(None),
-        }
+        Self::new()
     }
 }
 

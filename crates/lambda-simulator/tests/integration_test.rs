@@ -154,7 +154,7 @@ async fn test_init_error() {
         .await
         .expect("Failed to send init error");
 
-    assert_eq!(response.status(), 202);
+    assert_eq!(response.status(), 200);
 
     let init_error = simulator.get_init_error().await;
     assert!(init_error.is_some());

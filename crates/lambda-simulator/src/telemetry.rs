@@ -348,3 +348,19 @@ pub struct Span {
     /// Duration in milliseconds.
     pub duration_ms: f64,
 }
+
+/// Platform event: telemetry subscription registered.
+///
+/// Emitted when an extension subscribes to the Telemetry API.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlatformTelemetrySubscription {
+    /// Name of the extension that subscribed.
+    pub name: String,
+
+    /// State of the subscription (e.g., "Subscribed").
+    pub state: String,
+
+    /// Types of telemetry the extension subscribed to.
+    pub types: Vec<String>,
+}

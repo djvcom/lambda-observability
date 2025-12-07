@@ -1,0 +1,20 @@
+[workspace]
+changelog_update = true
+git_release_enable = true
+git_tag_enable = true
+
+[[package]]
+name = "lambda-simulator"
+changelog_include = ["feat", "fix", "refactor", "docs", "perf"]
+
+[[package]]
+name = "opentelemetry-configuration"
+changelog_include = ["feat", "fix", "refactor", "docs", "perf"]
+
+[[package]]
+name = "opentelemetry-lambda-tower"
+changelog_include = ["feat", "fix", "refactor", "docs", "perf"]
+
+[[package]]
+name = "opentelemetry-lambda-extension"
+changelog_include = ["feat", "fix", "refactor", "docs", "perf"]

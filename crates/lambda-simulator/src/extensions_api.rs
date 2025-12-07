@@ -114,6 +114,8 @@ async fn register_extension(
         "functionVersion": state.config.function_version,
         "handler": state.config.handler.clone().unwrap_or_else(|| "handler".to_string()),
         "accountId": state.config.account_id.clone().unwrap_or_else(|| "123456789012".to_string()),
+        "logGroupName": state.config.log_group_name,
+        "logStreamName": state.config.log_stream_name,
     });
 
     (StatusCode::OK, response_headers, Json(response_body)).into_response()

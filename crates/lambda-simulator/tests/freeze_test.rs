@@ -19,13 +19,8 @@ fn is_process_stopped(pid: u32) -> bool {
     get_process_state(pid).map(|s| s == 'T').unwrap_or(false)
 }
 
-fn test_runtime_path() -> String {
-    let mut path = std::env::current_exe().unwrap();
-    path.pop();
-    path.pop();
-    path.push("examples");
-    path.push("test_runtime");
-    path.to_string_lossy().to_string()
+fn test_runtime_path() -> &'static str {
+    env!("CARGO_BIN_EXE_test_runtime")
 }
 
 fn spawn_test_runtime(runtime_api: &str) -> Child {

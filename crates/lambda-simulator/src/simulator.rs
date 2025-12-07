@@ -38,39 +38,38 @@ pub enum SimulatorPhase {
 
 /// Configuration for the Lambda runtime simulator.
 ///
-/// # Timeout Limitations (Phase 1)
+/// # Timeout Limitations
 ///
-/// Currently, timeout values are used only for calculating invocation deadlines
-/// (the `Lambda-Runtime-Deadline-Ms` header). Actual timeout enforcement is not
-/// yet implemented in Phase 1. Invocations will not be automatically terminated
-/// when they exceed their configured timeout.
-///
-/// Full timeout enforcement will be added in Phase 4 of development.
+/// Timeout values are used for calculating invocation deadlines
+/// (the `Lambda-Runtime-Deadline-Ms` header). Actual timeout enforcement
+/// is not yet implemented - invocations will not be automatically
+/// terminated when they exceed their configured timeout.
 #[derive(Debug, Clone)]
 pub struct SimulatorConfig {
     /// Default timeout for invocations in milliseconds.
     ///
-    /// **Note:** Used for deadline calculation only. Not enforced in Phase 1.
+    /// Used for deadline calculation in the `Lambda-Runtime-Deadline-Ms` header.
+    /// Timeout enforcement is not currently implemented.
     pub invocation_timeout_ms: u64,
 
-    /// Timeout for initialization phase in milliseconds.
+    /// Timeout for initialisation phase in milliseconds.
     ///
-    /// **Note:** Not enforced in Phase 1.
+    /// Not currently enforced.
     pub init_timeout_ms: u64,
 
-    /// Function name.
+    /// Lambda function name, used in telemetry events and environment variables.
     pub function_name: String,
 
-    /// Function version.
+    /// Lambda function version (e.g., "$LATEST" or a published version number).
     pub function_version: String,
 
-    /// Function memory size in MB.
+    /// Function memory allocation in MB, used in telemetry metrics.
     pub memory_size_mb: u32,
 
-    /// Log group name.
+    /// CloudWatch Logs group name for the function.
     pub log_group_name: String,
 
-    /// Log stream name.
+    /// CloudWatch Logs stream name for this execution environment.
     pub log_stream_name: String,
 
     /// Timeout for waiting for extensions to be ready in milliseconds.
@@ -368,11 +367,11 @@ impl SimulatorBuilder {
             .into_iter()
             .chain(self.extension_pids)
             .collect();
-        let freeze_state = FreezeState::with_pids_shared(self.freeze_mode, all_pids);
-        let runtime_state = RuntimeState::new_shared();
+        let freeze_state = Arc::new(FreezeState::with_pids(self.freeze_mode, all_pids));
+        let runtime_state = Arc::new(RuntimeState::new());
         let extension_state = Arc::new(ExtensionState::new());
-        let telemetry_state = TelemetryState::new_shared();
-        let readiness_tracker = ExtensionReadinessTracker::new_shared();
+        let telemetry_state = Arc::new(TelemetryState::new());
+        let readiness_tracker = Arc::new(ExtensionReadinessTracker::new());
         let config = Arc::new(self.config);
 
         let runtime_api_state = RuntimeApiState {
@@ -566,7 +565,11 @@ impl Simulator {
     pub async fn enqueue(&self, invocation: Invocation) -> String {
         let was_frozen = self.freeze_state.is_frozen();
         if let Err(e) = self.freeze_state.unfreeze() {
-            tracing::warn!("Failed to unfreeze processes before invocation: {}", e);
+            panic!(
+                "Failed to unfreeze processes before invocation: {}. \
+                 The target processes are stuck in SIGSTOP state and cannot continue.",
+                e
+            );
         }
 
         let request_id = invocation.request_id.clone();
@@ -595,10 +598,10 @@ impl Simulator {
             },
         };
 
+        self.runtime_state.enqueue_invocation(invocation).await;
+
         tracing::info!(target: "lambda_lifecycle", "📤 Broadcasting INVOKE event to extensions");
         self.extension_state.broadcast_event(event).await;
-
-        self.runtime_state.enqueue_invocation(invocation).await;
 
         request_id
     }
@@ -1399,14 +1402,20 @@ impl Simulator {
     /// - `AWS_LAMBDA_FUNCTION_NAME` - Function name
     /// - `AWS_LAMBDA_FUNCTION_VERSION` - Function version
     /// - `AWS_LAMBDA_FUNCTION_MEMORY_SIZE` - Memory allocation in MB
+    /// - `AWS_LAMBDA_FUNCTION_ARN` - Function ARN (if account_id configured)
     /// - `AWS_LAMBDA_LOG_GROUP_NAME` - CloudWatch log group name
     /// - `AWS_LAMBDA_LOG_STREAM_NAME` - CloudWatch log stream name
     /// - `AWS_LAMBDA_RUNTIME_API` - Runtime API endpoint (host:port)
     /// - `AWS_LAMBDA_INITIALIZATION_TYPE` - Always "on-demand" for simulator
-    /// - `AWS_REGION` / `AWS_DEFAULT_REGION` - AWS region (extracted from config)
+    /// - `AWS_REGION` / `AWS_DEFAULT_REGION` - AWS region
+    /// - `AWS_ACCOUNT_ID` - AWS account ID (if configured)
     /// - `AWS_EXECUTION_ENV` - Runtime identifier
     /// - `LAMBDA_TASK_ROOT` - Path to function code (/var/task)
     /// - `LAMBDA_RUNTIME_DIR` - Path to runtime libraries (/var/runtime)
+    /// - `TZ` - Timezone (UTC)
+    /// - `LANG` - Locale (en_US.UTF-8)
+    /// - `PATH` - System path
+    /// - `LD_LIBRARY_PATH` - Library search path
     /// - `_HANDLER` - Handler identifier (if configured)
     ///
     /// # Examples
@@ -1482,6 +1491,11 @@ impl Simulator {
 
         if let Some(account_id) = &config.account_id {
             env.insert("AWS_ACCOUNT_ID".to_string(), account_id.clone());
+            let arn = format!(
+                "arn:aws:lambda:{}:{}:function:{}",
+                config.region, account_id, config.function_name
+            );
+            env.insert("AWS_LAMBDA_FUNCTION_ARN".to_string(), arn);
         }
 
         env.insert("TZ".to_string(), ":UTC".to_string());
