@@ -9,8 +9,8 @@
 //! includes the runtime process and all extension processes. This module supports
 //! freezing multiple PIDs to accurately simulate this behaviour.
 
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::RwLock;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use tokio::sync::Notify;
 
 #[cfg(unix)]
