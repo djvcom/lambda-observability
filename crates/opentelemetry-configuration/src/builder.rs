@@ -488,10 +488,11 @@ impl OtelSdkBuilder {
             .extend(self.resource_attributes.clone());
 
         // Validate endpoint URL if provided
-        if let Some(ref url) = config.endpoint.url {
-            if !url.starts_with("http://") && !url.starts_with("https://") {
-                return Err(SdkError::InvalidEndpoint { url: url.clone() });
-            }
+        if let Some(ref url) = config.endpoint.url
+            && !url.starts_with("http://")
+            && !url.starts_with("https://")
+        {
+            return Err(SdkError::InvalidEndpoint { url: url.clone() });
         }
 
         Ok(config)
@@ -536,10 +537,11 @@ impl OtelSdkBuilder {
         config.resource.attributes.extend(self.resource_attributes);
 
         // Validate endpoint URL if provided
-        if let Some(ref url) = config.endpoint.url {
-            if !url.starts_with("http://") && !url.starts_with("https://") {
-                return Err(SdkError::InvalidEndpoint { url: url.clone() });
-            }
+        if let Some(ref url) = config.endpoint.url
+            && !url.starts_with("http://")
+            && !url.starts_with("https://")
+        {
+            return Err(SdkError::InvalidEndpoint { url: url.clone() });
         }
 
         // Detect Lambda resource attributes from environment
@@ -717,11 +719,15 @@ mod tests {
 
     #[test]
     fn test_with_standard_env_endpoint() {
-        temp_env::with_var("OTEL_EXPORTER_OTLP_ENDPOINT", Some("http://custom:4318"), || {
-            let builder = OtelSdkBuilder::new().with_standard_env();
-            let config = builder.extract_config().unwrap();
-            assert_eq!(config.endpoint.url, Some("http://custom:4318".to_string()));
-        });
+        temp_env::with_var(
+            "OTEL_EXPORTER_OTLP_ENDPOINT",
+            Some("http://custom:4318"),
+            || {
+                let builder = OtelSdkBuilder::new().with_standard_env();
+                let config = builder.extract_config().unwrap();
+                assert_eq!(config.endpoint.url, Some("http://custom:4318".to_string()));
+            },
+        );
     }
 
     #[test]
@@ -729,7 +735,10 @@ mod tests {
         temp_env::with_var("OTEL_SERVICE_NAME", Some("test-service"), || {
             let builder = OtelSdkBuilder::new().with_standard_env();
             let config = builder.extract_config().unwrap();
-            assert_eq!(config.resource.service_name, Some("test-service".to_string()));
+            assert_eq!(
+                config.resource.service_name,
+                Some("test-service".to_string())
+            );
         });
     }
 
