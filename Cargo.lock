@@ -1170,7 +1170,7 @@ dependencies = [
 
 [[package]]
 name = "lambda-simulator"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "aws_lambda_events",
  "axum",
@@ -1547,7 +1547,7 @@ dependencies = [
 
 [[package]]
 name = "opentelemetry-lambda-extension"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "axum",

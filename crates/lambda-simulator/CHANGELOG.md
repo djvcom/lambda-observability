@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1](https://github.com/djvcom/lambda-observability/compare/lambda-simulator-v0.1.0...lambda-simulator-v0.1.1) - 2025-12-08
+
+### Other
+
+- *(deps)* bump criterion in the rust-minor-patch group ([#22](https://github.com/djvcom/lambda-observability/pull/22))
+
 ## [0.1.0] - 2025-12-03
 
 ### Added
