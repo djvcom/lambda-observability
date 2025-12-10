@@ -7,7 +7,10 @@ use lambda_runtime::LambdaEvent;
 use opentelemetry_sdk::logs::SdkLoggerProvider;
 use opentelemetry_sdk::trace::SdkTracerProvider;
 use opentelemetry_semantic_conventions::attribute::{
-    CLOUD_ACCOUNT_ID, CLOUD_PROVIDER, CLOUD_REGION, FAAS_MAX_MEMORY, FAAS_NAME, FAAS_VERSION,
+    CLIENT_ADDRESS, CLOUD_ACCOUNT_ID, CLOUD_PROVIDER, CLOUD_REGION, FAAS_MAX_MEMORY, FAAS_NAME,
+    FAAS_VERSION, HTTP_REQUEST_METHOD, HTTP_ROUTE, MESSAGING_BATCH_MESSAGE_COUNT,
+    MESSAGING_DESTINATION_NAME, MESSAGING_MESSAGE_ID, MESSAGING_OPERATION_TYPE, MESSAGING_SYSTEM,
+    NETWORK_PROTOCOL_VERSION, SERVER_ADDRESS, URL_PATH, URL_QUERY, URL_SCHEME, USER_AGENT_ORIGINAL,
 };
 use std::sync::Arc;
 use std::task::{Context, Poll};
@@ -90,6 +93,7 @@ where
         let span_name = self.extractor.span_name(&payload, &lambda_ctx);
 
         // Create the span with tracing crate
+        // All semantic convention fields must be declared here for record() to work
         let span = tracing::info_span!(
             "lambda.invoke",
             otel.name = %span_name,
@@ -97,6 +101,30 @@ where
             faas.trigger = %self.extractor.trigger_type(),
             faas.invocation_id = %lambda_ctx.request_id,
             faas.coldstart = is_cold_start,
+            // HTTP semantic conventions
+            { HTTP_REQUEST_METHOD } = tracing::field::Empty,
+            { URL_PATH } = tracing::field::Empty,
+            { URL_QUERY } = tracing::field::Empty,
+            { URL_SCHEME } = tracing::field::Empty,
+            { HTTP_ROUTE } = tracing::field::Empty,
+            { USER_AGENT_ORIGINAL } = tracing::field::Empty,
+            { CLIENT_ADDRESS } = tracing::field::Empty,
+            { SERVER_ADDRESS } = tracing::field::Empty,
+            { NETWORK_PROTOCOL_VERSION } = tracing::field::Empty,
+            // Messaging semantic conventions (SQS/SNS)
+            { MESSAGING_SYSTEM } = tracing::field::Empty,
+            { MESSAGING_OPERATION_TYPE } = tracing::field::Empty,
+            { MESSAGING_DESTINATION_NAME } = tracing::field::Empty,
+            { MESSAGING_MESSAGE_ID } = tracing::field::Empty,
+            { MESSAGING_BATCH_MESSAGE_COUNT } = tracing::field::Empty,
+            // Lambda context attributes
+            { CLOUD_PROVIDER } = tracing::field::Empty,
+            { CLOUD_REGION } = tracing::field::Empty,
+            { CLOUD_ACCOUNT_ID } = tracing::field::Empty,
+            { FAAS_NAME } = tracing::field::Empty,
+            { FAAS_VERSION } = tracing::field::Empty,
+            { FAAS_MAX_MEMORY } = tracing::field::Empty,
+            aws.lambda.invoked_arn = tracing::field::Empty,
         );
 
         // Set the parent context from extraction

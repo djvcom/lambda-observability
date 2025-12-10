@@ -43,6 +43,8 @@ aws_lambda_events = { version = "1.0", default-features = false, features = [] }
 # HTTP types
 http = "1"
 opentelemetry-semantic-conventions = { version = "0.31", features = ["semconv_experimental"] }
+lambda_http = { version = "1.0.1", optional = true }
+serde = { workspace = true, features = ["derive"] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full", "test-util", "macros"] }
@@ -53,6 +55,19 @@ temp-env = "0.3"
 serial_test = "3.2"
 aws_lambda_events = { version = "1.0", features = ["apigw", "sqs", "sns"] }
 chrono.workspace = true
+lambda_http = "1.0.1"
+tracing-subscriber = { workspace = true, features = ["fmt"] }
+serde = { workspace = true, features = ["derive"] }
+mock-collector = "0.2.5"
+opentelemetry-configuration = { path = "../opentelemetry-configuration" }
+
+[[example]]
+name = "http_handler"
+required-features = ["lambda-http"]
+
+[[example]]
+name = "sqs_handler"
+required-features = ["sqs"]
 
 [features]
 default = ["http", "sqs"]
@@ -60,7 +75,9 @@ default = ["http", "sqs"]
 http = ["aws_lambda_events/apigw"]
 sqs = ["aws_lambda_events/sqs"]
 sns = ["aws_lambda_events/sns"]
+# lambda_http crate integration
+lambda-http = ["dep:lambda_http", "aws_lambda_events/apigw", "aws_lambda_events/alb"]
 # All extractors
-full = ["http", "sqs", "sns"]
+full = ["http", "sqs", "sns", "lambda-http"]
 # Expose internal parsing functions for fuzzing (not part of public API)
 fuzz = ["http", "sqs", "sns"]

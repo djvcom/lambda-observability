@@ -6,6 +6,7 @@
 //! - `http` - API Gateway HTTP API (v2) and REST API (v1)
 //! - `sqs` - SQS message events
 //! - `sns` - SNS notification events
+//! - `lambda-http` - Integration with the `lambda_http` crate
 //!
 //! Enable features via Cargo.toml:
 //!
@@ -22,3 +23,6 @@ pub mod sqs;
 
 #[cfg(feature = "sns")]
 pub mod sns;
+
+#[cfg(feature = "lambda-http")]
+pub mod lambda_http;

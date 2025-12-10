@@ -1,30 +1,38 @@
 //! SNS event extractor for notification triggers.
 //!
-//! Extracts trace context from SNS message attributes. SNS follows similar
-//! patterns to SQS for trace propagation.
+//! Extracts trace context from SNS message attributes, checking:
+//! 1. `message_attributes` for W3C `traceparent` (injected by OTel-instrumented producers)
+//! 2. `message_attributes` for `AWSTraceHeader` in X-Ray format
 
 use crate::extractor::TraceContextExtractor;
-use aws_lambda_events::sns::{SnsEvent, SnsRecord};
+use aws_lambda_events::sns::{MessageAttribute, SnsEvent, SnsRecord};
 use lambda_runtime::Context as LambdaContext;
 use opentelemetry::Context;
-use opentelemetry::trace::{Link, SpanContext, SpanId, TraceFlags, TraceId, TraceState};
+use opentelemetry::propagation::Extractor;
+use opentelemetry::trace::{
+    Link, SpanContext, SpanId, TraceContextExt, TraceFlags, TraceId, TraceState,
+};
 use opentelemetry_semantic_conventions::attribute::{
     MESSAGING_BATCH_MESSAGE_COUNT, MESSAGING_DESTINATION_NAME, MESSAGING_MESSAGE_ID,
     MESSAGING_OPERATION_TYPE, MESSAGING_SYSTEM,
 };
+use std::collections::HashMap;
 use tracing::Span;
 
 /// Extractor for SNS notification events.
 ///
-/// SNS events can carry trace context in the `AWSTraceHeader` message
-/// attribute using X-Ray format. This extractor:
+/// SNS events may carry trace context in two locations within `message_attributes`:
+/// 1. W3C `traceparent`/`tracestate` - injected by OTel-instrumented producers
+/// 2. `AWSTraceHeader` - X-Ray format set by AWS
 ///
-/// 1. Does NOT set a parent context (returns current context)
-/// 2. Creates span links for each message's trace context
+/// This extractor checks both, preferring W3C format when available.
 ///
-/// This follows OpenTelemetry semantic conventions for messaging systems,
-/// where the async nature of message queues means span links are more
-/// appropriate than parent-child relationships.
+/// Per OpenTelemetry semantic conventions for messaging systems, this extractor:
+/// - Does NOT set a parent context (returns current context)
+/// - Creates span links for each message's trace context
+///
+/// This approach is appropriate because the async nature of message queues
+/// means span links are more semantically correct than parent-child relationships.
 ///
 /// # Example
 ///
@@ -94,17 +102,57 @@ impl TraceContextExtractor<SnsEvent> for SnsEventExtractor {
     }
 }
 
-/// Extracts a span link from an SNS record's AWSTraceHeader message attribute.
+/// Extracts a span link from an SNS record's message attributes.
+///
+/// Uses the globally configured propagator to extract trace context, then
+/// falls back to parsing `AWSTraceHeader` in X-Ray format as a Lambda-specific default.
 fn extract_link_from_record(record: &SnsRecord) -> Option<Link> {
-    let trace_attr = record.sns.message_attributes.get("AWSTraceHeader")?;
-
-    if trace_attr.value.is_empty() {
-        return None;
+    if let Some(span_context) =
+        extract_trace_context_from_message_attributes(&record.sns.message_attributes)
+    {
+        return Some(Link::new(span_context, vec![], 0));
     }
 
-    let span_context = parse_xray_trace_header(&trace_attr.value)?;
+    if let Some(trace_attr) = record.sns.message_attributes.get("AWSTraceHeader")
+        && !trace_attr.value.is_empty()
+        && let Some(span_context) = parse_xray_trace_header(&trace_attr.value)
+    {
+        return Some(Link::new(span_context, vec![], 0));
+    }
 
-    Some(Link::new(span_context, vec![], 0))
+    None
+}
+
+/// Extracts trace context from SNS message attributes using the global propagator.
+///
+/// The propagator determines which headers to look for (e.g. `traceparent` for W3C,
+/// `X-Amzn-Trace-Id` for X-Ray, `X-B3-*` for Zipkin, etc.).
+fn extract_trace_context_from_message_attributes(
+    message_attributes: &HashMap<String, MessageAttribute>,
+) -> Option<SpanContext> {
+    let extractor = SnsMessageAttributeExtractor(message_attributes);
+    let ctx =
+        opentelemetry::global::get_text_map_propagator(|propagator| propagator.extract(&extractor));
+
+    let span_context = ctx.span().span_context().clone();
+    if span_context.is_valid() {
+        Some(span_context)
+    } else {
+        None
+    }
+}
+
+/// Adapter to extract trace context from SNS message attributes.
+struct SnsMessageAttributeExtractor<'a>(&'a HashMap<String, MessageAttribute>);
+
+impl Extractor for SnsMessageAttributeExtractor<'_> {
+    fn get(&self, key: &str) -> Option<&str> {
+        self.0.get(key).map(|attr| attr.value.as_str())
+    }
+
+    fn keys(&self) -> Vec<&str> {
+        self.0.keys().map(|k| k.as_str()).collect()
+    }
 }
 
 /// Parses an X-Ray trace header into a SpanContext.

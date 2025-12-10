@@ -59,6 +59,7 @@
 //! - `http` - API Gateway v1/v2 extractor (enabled by default)
 //! - `sqs` - SQS event extractor (enabled by default)
 //! - `sns` - SNS event extractor
+//! - `lambda-http` - Integration with the `lambda_http` crate
 //! - `full` - All extractors
 
 mod cold_start;
@@ -84,3 +85,6 @@ pub use extractors::sqs::SqsEventExtractor;
 
 #[cfg(feature = "sns")]
 pub use extractors::sns::SnsEventExtractor;
+
+#[cfg(feature = "lambda-http")]
+pub use extractors::lambda_http::LambdaHttpExtractor;

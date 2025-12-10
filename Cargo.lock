@@ -1203,6 +1203,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "lambda_http"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a106755a9079a3ed20b4262e32c9a5efa127c97546cb2ecf69bbf3d17dbf970b"
+dependencies = [
+ "aws_lambda_events",
+ "bytes",
+ "encoding_rs",
+ "futures-util",
+ "http",
+ "http-body",
+ "http-body-util",
+ "hyper",
+ "lambda_runtime",
+ "mime",
+ "percent-encoding",
+ "pin-project-lite",
+ "serde",
+ "serde_json",
+ "serde_urlencoded",
+ "tokio-stream",
+ "url",
+]
+
+[[package]]
 name = "lambda_runtime"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1597,12 +1622,16 @@ dependencies = [
  "chrono",
  "futures-core",
  "http",
+ "lambda_http",
  "lambda_runtime",
+ "mock-collector",
  "opentelemetry",
+ "opentelemetry-configuration",
  "opentelemetry-semantic-conventions",
  "opentelemetry-stdout",
  "opentelemetry_sdk",
  "pin-project",
+ "serde",
  "serde_json",
  "serial_test",
  "temp-env",
@@ -1612,6 +1641,7 @@ dependencies = [
  "tower-service",
  "tracing",
  "tracing-opentelemetry",
+ "tracing-subscriber",
 ]
 
 [[package]]

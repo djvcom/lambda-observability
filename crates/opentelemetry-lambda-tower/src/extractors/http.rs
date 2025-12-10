@@ -10,9 +10,8 @@ use aws_lambda_events::apigw::{ApiGatewayProxyRequest, ApiGatewayV2httpRequest};
 use http::HeaderMap;
 use lambda_runtime::Context as LambdaContext;
 use opentelemetry::Context;
-use opentelemetry::propagation::{Extractor, TextMapPropagator};
+use opentelemetry::propagation::Extractor;
 use opentelemetry::trace::TraceContextExt;
-use opentelemetry_sdk::propagation::TraceContextPropagator;
 use opentelemetry_semantic_conventions::attribute::{
     CLIENT_ADDRESS, HTTP_REQUEST_METHOD, HTTP_ROUTE, NETWORK_PROTOCOL_VERSION, SERVER_ADDRESS,
     URL_PATH, URL_QUERY, URL_SCHEME, USER_AGENT_ORIGINAL,
@@ -24,8 +23,11 @@ pub type HttpEventExtractor = ApiGatewayV2Extractor;
 
 /// Extractor for API Gateway HTTP API (v2) events.
 ///
-/// Extracts trace context from the `traceparent` header using W3C Trace Context.
-/// Falls back to the `_X_AMZN_TRACE_ID` environment variable if no header present.
+/// Extracts trace context from HTTP headers using the globally configured
+/// OpenTelemetry propagator. Falls back to the `_X_AMZN_TRACE_ID` environment
+/// variable if no valid trace context is found in headers.
+///
+/// Configure the propagator via `opentelemetry::global::set_text_map_propagator()`.
 ///
 /// # Example
 ///
@@ -35,40 +37,38 @@ pub type HttpEventExtractor = ApiGatewayV2Extractor;
 /// let layer = OtelTracingLayer::new(ApiGatewayV2Extractor::new());
 /// ```
 #[derive(Clone, Debug, Default)]
-pub struct ApiGatewayV2Extractor {
-    propagator: TraceContextPropagator,
-}
+pub struct ApiGatewayV2Extractor;
 
 impl ApiGatewayV2Extractor {
-    /// Creates a new extractor with default W3C Trace Context propagator.
+    /// Creates a new extractor.
+    ///
+    /// Uses the globally configured OpenTelemetry propagator for trace context extraction.
     pub fn new() -> Self {
-        Self {
-            propagator: TraceContextPropagator::new(),
-        }
+        Self
     }
 }
 
 impl TraceContextExtractor<ApiGatewayV2httpRequest> for ApiGatewayV2Extractor {
     fn extract_context(&self, event: &ApiGatewayV2httpRequest) -> Context {
-        // Try to extract from headers first
         let extractor = HeaderMapExtractor(&event.headers);
-        let ctx = self.propagator.extract(&extractor);
+        let ctx = opentelemetry::global::get_text_map_propagator(|propagator| {
+            propagator.extract(&extractor)
+        });
 
-        // Check if we got a valid span context
         if ctx.span().span_context().is_valid() {
             return ctx;
         }
 
-        // Fall back to X-Ray environment variable
         if let Ok(xray_header) = std::env::var("_X_AMZN_TRACE_ID") {
             let env_extractor = XRayEnvExtractor::new(&xray_header);
-            let xray_ctx = self.propagator.extract(&env_extractor);
+            let xray_ctx = opentelemetry::global::get_text_map_propagator(|propagator| {
+                propagator.extract(&env_extractor)
+            });
             if xray_ctx.span().span_context().is_valid() {
                 return xray_ctx;
             }
         }
 
-        // Return current context (no parent)
         Context::current()
     }
 
@@ -144,34 +144,35 @@ impl TraceContextExtractor<ApiGatewayV2httpRequest> for ApiGatewayV2Extractor {
 /// Extractor for API Gateway REST API (v1) events.
 ///
 /// Similar to v2 but handles the different event structure.
+/// Uses the globally configured OpenTelemetry propagator for trace context extraction.
 #[derive(Clone, Debug, Default)]
-pub struct ApiGatewayV1Extractor {
-    propagator: TraceContextPropagator,
-}
+pub struct ApiGatewayV1Extractor;
 
 impl ApiGatewayV1Extractor {
-    /// Creates a new extractor with default W3C Trace Context propagator.
+    /// Creates a new extractor.
+    ///
+    /// Uses the globally configured OpenTelemetry propagator for trace context extraction.
     pub fn new() -> Self {
-        Self {
-            propagator: TraceContextPropagator::new(),
-        }
+        Self
     }
 }
 
 impl TraceContextExtractor<ApiGatewayProxyRequest> for ApiGatewayV1Extractor {
     fn extract_context(&self, event: &ApiGatewayProxyRequest) -> Context {
-        // Try to extract from headers first
         let extractor = HeaderMapExtractor(&event.headers);
-        let ctx = self.propagator.extract(&extractor);
+        let ctx = opentelemetry::global::get_text_map_propagator(|propagator| {
+            propagator.extract(&extractor)
+        });
 
         if ctx.span().span_context().is_valid() {
             return ctx;
         }
 
-        // Fall back to X-Ray environment variable
         if let Ok(xray_header) = std::env::var("_X_AMZN_TRACE_ID") {
             let env_extractor = XRayEnvExtractor::new(&xray_header);
-            let xray_ctx = self.propagator.extract(&env_extractor);
+            let xray_ctx = opentelemetry::global::get_text_map_propagator(|propagator| {
+                propagator.extract(&env_extractor)
+            });
             if xray_ctx.span().span_context().is_valid() {
                 return xray_ctx;
             }
@@ -346,6 +347,8 @@ mod tests {
         ApiGatewayV2httpRequestContext, ApiGatewayV2httpRequestContextHttpDescription,
     };
     use http::HeaderValue;
+    use opentelemetry_sdk::propagation::TraceContextPropagator;
+    use serial_test::serial;
 
     fn create_test_v2_event() -> ApiGatewayV2httpRequest {
         let mut headers = HeaderMap::new();
@@ -411,11 +414,13 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_extract_traceparent_header() {
+        opentelemetry::global::set_text_map_propagator(TraceContextPropagator::new());
+
         let extractor = ApiGatewayV2Extractor::new();
         let mut event = create_test_v2_event();
 
-        // Add a valid traceparent header
         event.headers.insert(
             "traceparent",
             HeaderValue::from_static("00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"),
@@ -423,7 +428,6 @@ mod tests {
 
         let ctx = extractor.extract_context(&event);
 
-        // Should have a valid span context from the header
         assert!(ctx.span().span_context().is_valid());
         assert_eq!(
             ctx.span().span_context().trace_id().to_string(),
@@ -432,11 +436,13 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_extract_traceparent_case_insensitive() {
+        opentelemetry::global::set_text_map_propagator(TraceContextPropagator::new());
+
         let extractor = ApiGatewayV2Extractor::new();
         let mut event = create_test_v2_event();
 
-        // Headers may come in different cases
         event.headers.insert(
             "Traceparent",
             HeaderValue::from_static("00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"),
@@ -451,14 +457,12 @@ mod tests {
         let extractor = ApiGatewayV2Extractor::new();
         let mut event = create_test_v2_event();
 
-        // Invalid traceparent
         event
             .headers
             .insert("traceparent", HeaderValue::from_static("invalid"));
 
         let ctx = extractor.extract_context(&event);
 
-        // Should fall back to current context (invalid)
         assert!(!ctx.span().span_context().is_valid());
     }
 
