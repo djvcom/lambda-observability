@@ -61,6 +61,14 @@ serde = { workspace = true, features = ["derive"] }
 mock-collector = "0.2.5"
 opentelemetry-configuration = { path = "../opentelemetry-configuration" }
 
+[[example]]
+name = "http_handler"
+required-features = ["lambda-http"]
+
+[[example]]
+name = "sqs_handler"
+required-features = ["sqs"]
+
 [features]
 default = ["http", "sqs"]
 # Event type extractors
