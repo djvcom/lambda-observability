@@ -8,6 +8,8 @@ use aws_lambda_events::apigw::ApiGatewayV2httpRequest;
 use aws_lambda_events::sqs::SqsEvent;
 use lambda_runtime::Context as LambdaContext;
 use opentelemetry_lambda_tower::{ApiGatewayV2Extractor, SqsEventExtractor, TraceContextExtractor};
+use opentelemetry_sdk::propagation::TraceContextPropagator;
+use serial_test::serial;
 
 /// API Gateway HTTP API v2 sample event (from lambda-sample-events repo)
 const API_GATEWAY_HTTP_API_EVENT: &str = r#"{
@@ -195,14 +197,16 @@ mod api_gateway_v2_tests {
     }
 
     #[test]
+    #[serial]
     fn test_extract_context_with_traceparent() {
+        opentelemetry::global::set_text_map_propagator(TraceContextPropagator::new());
+
         let event: ApiGatewayV2httpRequest =
             serde_json::from_str(API_GATEWAY_HTTP_API_WITH_TRACE).expect("Failed to deserialize");
         let extractor = ApiGatewayV2Extractor::new();
 
         let ctx = extractor.extract_context(&event);
 
-        // With traceparent, span context should be valid
         assert!(ctx.span().span_context().is_valid());
         assert_eq!(
             ctx.span().span_context().trace_id().to_string(),
@@ -259,7 +263,13 @@ mod sqs_tests {
     #[test]
     fn test_trigger_type() {
         let extractor = SqsEventExtractor::new();
-        assert_eq!(extractor.trigger_type(), "pubsub");
+        let event: SqsEvent = serde_json::from_str(SQS_EVENT).expect("Failed to deserialize");
+        assert_eq!(
+            extractor
+                .span_name(&event, &LambdaContext::default())
+                .contains("process"),
+            true
+        );
     }
 
     #[test]

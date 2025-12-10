@@ -1,0 +1,3 @@
+[submodule "crates/opentelemetry-lambda-tower/upstream-runtime"]
+	path = crates/opentelemetry-lambda-tower/upstream-runtime
+	url = https://github.com/awslabs/aws-lambda-rust-runtime.git
