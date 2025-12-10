@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2](https://github.com/djvcom/lambda-observability/compare/opentelemetry-lambda-tower-v0.1.1...opentelemetry-lambda-tower-v0.1.2) - 2025-12-10
+
+### Added
+
+- *(opentelemetry-lambda-tower)* add semantic convention integration tests
+
+### Fixed
+
+- *(opentelemetry-lambda-tower)* add required-features for examples
+
+### Other
+
+- Merge pull request #25 from djvcom/feat/tower-semantic-conventions-test
+
 ## [0.1.1](https://github.com/djvcom/lambda-observability/compare/opentelemetry-lambda-tower-v0.1.0...opentelemetry-lambda-tower-v0.1.1) - 2025-12-07
 
 ### Other
