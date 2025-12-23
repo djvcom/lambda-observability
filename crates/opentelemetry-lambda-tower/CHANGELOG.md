@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.3](https://github.com/djvcom/lambda-observability/compare/opentelemetry-lambda-tower-v0.1.2...opentelemetry-lambda-tower-v0.1.3) - 2025-12-23
+
+### Other
+
+- *(deps)* bump the rust-minor-patch group with 4 updates ([#29](https://github.com/djvcom/lambda-observability/pull/29))
+
 ## [0.1.2](https://github.com/djvcom/lambda-observability/compare/opentelemetry-lambda-tower-v0.1.1...opentelemetry-lambda-tower-v0.1.2) - 2025-12-10
 
 ### Added
