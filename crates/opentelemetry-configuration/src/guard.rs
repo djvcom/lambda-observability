@@ -8,6 +8,7 @@ use crate::config::{OtelSdkConfig, Protocol};
 use crate::error::SdkError;
 use crate::fallback::ExportFallback;
 use opentelemetry::KeyValue;
+use opentelemetry::propagation::TextMapCompositePropagator;
 use opentelemetry::trace::TracerProvider as _;
 use opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge;
 use opentelemetry_otlp::{WithExportConfig, WithHttpConfig, WithTonicConfig};
@@ -16,6 +17,7 @@ use opentelemetry_sdk::logs::{
     BatchConfigBuilder as LogBatchConfigBuilder, BatchLogProcessor, SdkLoggerProvider,
 };
 use opentelemetry_sdk::metrics::SdkMeterProvider;
+use opentelemetry_sdk::propagation::{BaggagePropagator, TraceContextPropagator};
 use opentelemetry_sdk::trace::{
     BatchConfigBuilder as TraceBatchConfigBuilder, BatchSpanProcessor, SdkTracerProvider,
 };
@@ -90,6 +92,13 @@ impl OtelGuard {
         if let Some(ref provider) = meter_provider {
             opentelemetry::global::set_meter_provider(provider.clone());
         }
+
+        // Set W3C propagators for trace context (traceparent) and baggage headers
+        let propagator = TextMapCompositePropagator::new(vec![
+            Box::new(TraceContextPropagator::new()),
+            Box::new(BaggagePropagator::new()),
+        ]);
+        opentelemetry::global::set_text_map_propagator(propagator);
 
         // Initialise tracing subscriber if requested
         if config.init_tracing_subscriber {
