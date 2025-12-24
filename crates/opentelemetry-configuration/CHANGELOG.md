@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0](https://github.com/djvcom/lambda-observability/compare/opentelemetry-configuration-v0.1.2...opentelemetry-configuration-v0.2.0) - 2025-12-24
+
+### Added
+
+- *(opentelemetry-configuration)* add compute environment detection and Rust resource detector ([#34](https://github.com/djvcom/lambda-observability/pull/34))
+
+### Other
+
+- *(deps)* bump the rust-minor-patch group with 3 updates ([#32](https://github.com/djvcom/lambda-observability/pull/32))
+
 ## [0.1.2](https://github.com/djvcom/lambda-observability/compare/opentelemetry-configuration-v0.1.1...opentelemetry-configuration-v0.1.2) - 2025-12-23
 
 ### Added

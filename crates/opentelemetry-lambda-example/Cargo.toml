@@ -24,7 +24,7 @@ opentelemetry-lambda-tower.workspace = true
 tower = "0.5"
 tracing-opentelemetry.workspace = true
 tracing-subscriber.workspace = true
-opentelemetry-configuration = { version = "0.1.2", path = "../opentelemetry-configuration" }
+opentelemetry-configuration = { version = "0.2.0", path = "../opentelemetry-configuration" }
 
 [dev-dependencies]
 lambda-simulator.workspace = true
