@@ -4,20 +4,25 @@
 //! metrics, logs). When dropped, it automatically flushes pending data and
 //! shuts down providers gracefully.
 
-use crate::config::{OtelSdkConfig, Protocol};
+use crate::config::{ComputeEnvironment, OtelSdkConfig, Protocol};
 use crate::error::SdkError;
 use crate::fallback::ExportFallback;
+use crate::rust_detector::RustResourceDetector;
 use opentelemetry::KeyValue;
 use opentelemetry::propagation::TextMapCompositePropagator;
 use opentelemetry::trace::TracerProvider as _;
 use opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge;
 use opentelemetry_otlp::{WithExportConfig, WithHttpConfig, WithTonicConfig};
+use opentelemetry_resource_detectors::{
+    HostResourceDetector, K8sResourceDetector, OsResourceDetector, ProcessResourceDetector,
+};
 use opentelemetry_sdk::Resource;
 use opentelemetry_sdk::logs::{
     BatchConfigBuilder as LogBatchConfigBuilder, BatchLogProcessor, SdkLoggerProvider,
 };
 use opentelemetry_sdk::metrics::SdkMeterProvider;
 use opentelemetry_sdk::propagation::{BaggagePropagator, TraceContextPropagator};
+use opentelemetry_sdk::resource::ResourceBuilder;
 use opentelemetry_sdk::trace::{
     BatchConfigBuilder as TraceBatchConfigBuilder, BatchSpanProcessor, SdkTracerProvider,
 };
@@ -29,8 +34,8 @@ use tracing_subscriber::util::SubscriberInitExt;
 /// Guard that manages OpenTelemetry provider lifecycle.
 ///
 /// When this guard is dropped, it automatically flushes and shuts down all
-/// configured providers. This ensures telemetry is exported before the Lambda
-/// execution environment freezes.
+/// configured providers. This ensures telemetry is exported before the
+/// application exits or the execution environment freezes.
 ///
 /// # Example
 ///
@@ -102,7 +107,12 @@ impl OtelGuard {
 
         // Initialise tracing subscriber if requested
         if config.init_tracing_subscriber {
-            init_subscriber(&tracer_provider, &logger_provider)?;
+            let scope_name = config
+                .instrumentation_scope_name
+                .clone()
+                .or_else(|| config.resource.service_name.clone())
+                .unwrap_or_else(|| "opentelemetry-configuration".to_string());
+            init_subscriber(&tracer_provider, &logger_provider, scope_name)?;
         }
 
         Ok(Self {
@@ -210,6 +220,49 @@ impl Drop for OtelGuard {
 }
 
 fn build_resource(config: &OtelSdkConfig) -> Resource {
+    let mut builder = Resource::builder();
+
+    // Run detectors based on compute environment
+    match config.resource.compute_environment {
+        ComputeEnvironment::Auto => {
+            // Generic detectors (always useful)
+            builder = builder
+                .with_detector(Box::new(HostResourceDetector::default()))
+                .with_detector(Box::new(OsResourceDetector))
+                .with_detector(Box::new(ProcessResourceDetector))
+                .with_detector(Box::new(RustResourceDetector));
+
+            // Probe for Lambda
+            if std::env::var("AWS_LAMBDA_FUNCTION_NAME").is_ok() {
+                builder = add_lambda_attributes(builder);
+            }
+            // Probe for K8s
+            if std::env::var("KUBERNETES_SERVICE_HOST").is_ok() {
+                builder = builder.with_detector(Box::new(K8sResourceDetector));
+            }
+        }
+        ComputeEnvironment::Lambda => {
+            builder = builder
+                .with_detector(Box::new(HostResourceDetector::default()))
+                .with_detector(Box::new(OsResourceDetector))
+                .with_detector(Box::new(ProcessResourceDetector))
+                .with_detector(Box::new(RustResourceDetector));
+            builder = add_lambda_attributes(builder);
+        }
+        ComputeEnvironment::Kubernetes => {
+            builder = builder
+                .with_detector(Box::new(HostResourceDetector::default()))
+                .with_detector(Box::new(OsResourceDetector))
+                .with_detector(Box::new(ProcessResourceDetector))
+                .with_detector(Box::new(RustResourceDetector))
+                .with_detector(Box::new(K8sResourceDetector));
+        }
+        ComputeEnvironment::None => {
+            // No automatic detection
+        }
+    }
+
+    // Add explicit attributes from config (these take precedence)
     let mut attributes: Vec<KeyValue> = config
         .resource
         .attributes
@@ -229,7 +282,29 @@ fn build_resource(config: &OtelSdkConfig) -> Resource {
         attributes.push(KeyValue::new("deployment.environment.name", env.clone()));
     }
 
-    Resource::builder().with_attributes(attributes).build()
+    builder.with_attributes(attributes).build()
+}
+
+fn add_lambda_attributes(builder: ResourceBuilder) -> ResourceBuilder {
+    let mut attrs = vec![KeyValue::new("cloud.provider", "aws")];
+
+    if let Ok(region) = std::env::var("AWS_REGION") {
+        attrs.push(KeyValue::new("cloud.region", region));
+    }
+    if let Ok(memory) = std::env::var("AWS_LAMBDA_FUNCTION_MEMORY_SIZE") {
+        attrs.push(KeyValue::new("faas.max_memory", memory));
+    }
+    if let Ok(instance) = std::env::var("AWS_LAMBDA_LOG_STREAM_NAME") {
+        attrs.push(KeyValue::new("faas.instance", instance));
+    }
+    if let Ok(name) = std::env::var("AWS_LAMBDA_FUNCTION_NAME") {
+        attrs.push(KeyValue::new("faas.name", name));
+    }
+    if let Ok(version) = std::env::var("AWS_LAMBDA_FUNCTION_VERSION") {
+        attrs.push(KeyValue::new("faas.version", version));
+    }
+
+    builder.with_attributes(attrs)
 }
 
 fn build_tracer_provider(
@@ -448,6 +523,7 @@ fn build_logger_provider(
 fn init_subscriber(
     tracer_provider: &Option<SdkTracerProvider>,
     logger_provider: &Option<SdkLoggerProvider>,
+    scope_name: String,
 ) -> Result<(), SdkError> {
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
 
@@ -459,13 +535,13 @@ fn init_subscriber(
 
     match (tracer_provider, logger_provider) {
         (Some(tp), Some(lp)) => {
-            let tracer = tp.tracer("lambda-otel-extension");
+            let tracer = tp.tracer(scope_name);
             let telemetry_layer = tracing_opentelemetry::layer().with_tracer(tracer);
             let log_layer = OpenTelemetryTracingBridge::new(lp);
             registry.with(telemetry_layer).with(log_layer).try_init()?;
         }
         (Some(tp), None) => {
-            let tracer = tp.tracer("lambda-otel-extension");
+            let tracer = tp.tracer(scope_name);
             let telemetry_layer = tracing_opentelemetry::layer().with_tracer(tracer);
             registry.with(telemetry_layer).try_init()?;
         }

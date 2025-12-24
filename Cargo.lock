@@ -1522,6 +1522,8 @@ dependencies = [
  "opentelemetry-appender-tracing",
  "opentelemetry-otlp",
  "opentelemetry-proto",
+ "opentelemetry-resource-detectors",
+ "opentelemetry-semantic-conventions",
  "opentelemetry_sdk",
  "prost",
  "serde",
@@ -1677,6 +1679,17 @@ dependencies = [
  "serde_json",
  "tonic",
  "tonic-prost",
+]
+
+[[package]]
+name = "opentelemetry-resource-detectors"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e82845106cf72d47c141cee7f0d95e0650d8f28c6222a1f1ae727a8883899c19"
+dependencies = [
+ "opentelemetry",
+ "opentelemetry-semantic-conventions",
+ "opentelemetry_sdk",
 ]
 
 [[package]]
