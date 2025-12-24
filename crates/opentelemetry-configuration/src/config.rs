@@ -8,6 +8,22 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::time::Duration;
 
+/// Compute environment for resource attribute detection.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ComputeEnvironment {
+    /// Automatically detect the compute environment.
+    /// Runs generic detectors (host, OS, process) and probes for Lambda/K8s.
+    #[default]
+    Auto,
+    /// AWS Lambda - generic detectors + Lambda-specific attributes (faas.*)
+    Lambda,
+    /// Kubernetes - generic detectors + K8s-specific attributes
+    Kubernetes,
+    /// No automatic detection - only use explicitly configured attributes.
+    None,
+}
+
 /// OTLP export protocol.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -62,6 +78,10 @@ pub struct OtelSdkConfig {
 
     /// Whether to initialise the tracing subscriber.
     pub init_tracing_subscriber: bool,
+
+    /// Name for the instrumentation scope (otel.library.name).
+    /// Defaults to service_name if set, otherwise "opentelemetry-configuration".
+    pub instrumentation_scope_name: Option<String>,
 }
 
 impl Default for OtelSdkConfig {
@@ -73,6 +93,7 @@ impl Default for OtelSdkConfig {
             metrics: SignalConfig::default_enabled(),
             logs: SignalConfig::default_enabled(),
             init_tracing_subscriber: true,
+            instrumentation_scope_name: None,
         }
     }
 }
@@ -171,8 +192,6 @@ impl EndpointConfig {
 #[serde(default)]
 pub struct ResourceConfig {
     /// Service name.
-    ///
-    /// If not specified, attempts to detect from `AWS_LAMBDA_FUNCTION_NAME`.
     pub service_name: Option<String>,
 
     /// Service version.
@@ -185,13 +204,9 @@ pub struct ResourceConfig {
     #[serde(default)]
     pub attributes: HashMap<String, String>,
 
-    /// Whether to detect Lambda resource attributes from environment.
-    #[serde(default = "default_true")]
-    pub detect_lambda: bool,
-}
-
-fn default_true() -> bool {
-    true
+    /// Compute environment for automatic resource detection.
+    #[serde(default)]
+    pub compute_environment: ComputeEnvironment,
 }
 
 impl ResourceConfig {
@@ -215,45 +230,10 @@ impl ResourceConfig {
             self.deployment_environment = other.deployment_environment;
         }
         self.attributes.extend(other.attributes);
-        if !other.detect_lambda {
-            self.detect_lambda = false;
+        if other.compute_environment != ComputeEnvironment::default() {
+            self.compute_environment = other.compute_environment;
         }
         self
-    }
-
-    /// Detects resource attributes from the Lambda environment.
-    pub fn detect_from_environment(&mut self) {
-        if !self.detect_lambda {
-            return;
-        }
-
-        if self.service_name.is_none() {
-            self.service_name = std::env::var("AWS_LAMBDA_FUNCTION_NAME").ok();
-        }
-
-        if self.service_version.is_none() {
-            self.service_version = std::env::var("AWS_LAMBDA_FUNCTION_VERSION").ok();
-        }
-
-        if let Ok(region) = std::env::var("AWS_REGION") {
-            self.attributes
-                .entry("cloud.region".to_string())
-                .or_insert(region);
-        }
-
-        if let Ok(memory) = std::env::var("AWS_LAMBDA_FUNCTION_MEMORY_SIZE") {
-            self.attributes
-                .entry("faas.max_memory".to_string())
-                .or_insert(memory);
-        }
-
-        self.attributes
-            .entry("cloud.provider".to_string())
-            .or_insert_with(|| "aws".to_string());
-
-        self.attributes
-            .entry("faas.instance".to_string())
-            .or_insert_with(|| std::env::var("AWS_LAMBDA_LOG_STREAM_NAME").unwrap_or_default());
     }
 }
 
@@ -338,6 +318,26 @@ impl BatchConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_compute_environment_default() {
+        assert_eq!(ComputeEnvironment::default(), ComputeEnvironment::Auto);
+    }
+
+    #[test]
+    fn test_compute_environment_serde() {
+        let env: ComputeEnvironment = serde_json::from_str(r#""auto""#).unwrap();
+        assert_eq!(env, ComputeEnvironment::Auto);
+
+        let env: ComputeEnvironment = serde_json::from_str(r#""lambda""#).unwrap();
+        assert_eq!(env, ComputeEnvironment::Lambda);
+
+        let env: ComputeEnvironment = serde_json::from_str(r#""kubernetes""#).unwrap();
+        assert_eq!(env, ComputeEnvironment::Kubernetes);
+
+        let env: ComputeEnvironment = serde_json::from_str(r#""none""#).unwrap();
+        assert_eq!(env, ComputeEnvironment::None);
+    }
 
     #[test]
     fn test_protocol_default() {

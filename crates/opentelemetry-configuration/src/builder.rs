@@ -9,7 +9,7 @@
 //! Sources are merged in order, with later sources taking precedence.
 
 use crate::SdkError;
-use crate::config::{OtelSdkConfig, Protocol, ResourceConfig};
+use crate::config::{ComputeEnvironment, OtelSdkConfig, Protocol, ResourceConfig};
 use crate::fallback::ExportFallback;
 use crate::guard::OtelGuard;
 use figment::Figment;
@@ -342,6 +342,17 @@ impl OtelSdkBuilder {
                 env.clone(),
             ));
         }
+        if config.compute_environment != ComputeEnvironment::default() {
+            let env_str = match config.compute_environment {
+                ComputeEnvironment::Auto => "auto",
+                ComputeEnvironment::Lambda => "lambda",
+                ComputeEnvironment::Kubernetes => "kubernetes",
+                ComputeEnvironment::None => "none",
+            };
+            self.figment = self
+                .figment
+                .merge(Serialized::default("resource.compute_environment", env_str));
+        }
         for (key, value) in config.attributes {
             self.resource_attributes.insert(key, value);
         }
@@ -469,6 +480,75 @@ impl OtelSdkBuilder {
         self
     }
 
+    /// Sets the instrumentation scope name (otel.library.name).
+    ///
+    /// If not set, defaults to the service name, then "opentelemetry-configuration".
+    pub fn instrumentation_scope_name(mut self, name: impl Into<String>) -> Self {
+        self.figment = self.figment.merge(Serialized::default(
+            "instrumentation_scope_name",
+            name.into(),
+        ));
+        self
+    }
+
+    /// Sets the compute environment for resource detection.
+    ///
+    /// Controls which resource detectors are run automatically:
+    /// - `Auto` (default): Runs generic detectors and probes for Lambda/K8s
+    /// - `Lambda`: Runs generic detectors + Lambda-specific attributes
+    /// - `Kubernetes`: Runs generic detectors + K8s detector
+    /// - `None`: No automatic detection, only explicit configuration
+    pub fn compute_environment(mut self, env: ComputeEnvironment) -> Self {
+        let env_str = match env {
+            ComputeEnvironment::Auto => "auto",
+            ComputeEnvironment::Lambda => "lambda",
+            ComputeEnvironment::Kubernetes => "kubernetes",
+            ComputeEnvironment::None => "none",
+        };
+        self.figment = self
+            .figment
+            .merge(Serialized::default("resource.compute_environment", env_str));
+        self
+    }
+
+    /// Adds Rust build-time information as resource attributes.
+    ///
+    /// Use with the [`capture_rust_build_info!`](crate::capture_rust_build_info) macro
+    /// to add rustc version and channel information to telemetry.
+    ///
+    /// Requires [`emit_rustc_env`](crate::emit_rustc_env) to be called in your build.rs.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // In build.rs:
+    /// fn main() {
+    ///     opentelemetry_configuration::emit_rustc_env();
+    /// }
+    ///
+    /// // In main.rs:
+    /// use opentelemetry_configuration::{OtelSdkBuilder, capture_rust_build_info};
+    ///
+    /// let _guard = OtelSdkBuilder::new()
+    ///     .service_name("my-service")
+    ///     .with_rust_build_info(capture_rust_build_info!())
+    ///     .build()?;
+    /// ```
+    ///
+    /// # Attributes Added
+    ///
+    /// - `process.runtime.version` - rustc version (e.g., "1.84.0")
+    /// - `process.runtime.description` - full version string
+    /// - `rust.channel` - release channel ("stable", "beta", or "nightly")
+    pub fn with_rust_build_info(mut self, info: crate::RustBuildInfo) -> Self {
+        for kv in info.to_key_values() {
+            let key = kv.key.as_str().to_string();
+            let value = kv.value.as_str().to_string();
+            self.resource_attributes.insert(key, value);
+        }
+        self
+    }
+
     /// Extracts the configuration for inspection or debugging.
     ///
     /// # Errors
@@ -542,9 +622,6 @@ impl OtelSdkBuilder {
             return Err(SdkError::InvalidEndpoint { url: url.clone() });
         }
 
-        // Detect Lambda resource attributes from environment
-        config.resource.detect_from_environment();
-
         OtelGuard::from_config(config, self.fallback, self.custom_resource)
     }
 }
@@ -594,9 +671,9 @@ impl ResourceConfigBuilder {
         self
     }
 
-    /// Disables automatic Lambda resource detection.
-    pub fn without_lambda_detection(mut self) -> Self {
-        self.config.detect_lambda = false;
+    /// Sets the compute environment for resource detection.
+    pub fn compute_environment(mut self, env: ComputeEnvironment) -> Self {
+        self.config.compute_environment = env;
         self
     }
 

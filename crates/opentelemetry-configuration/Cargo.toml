@@ -32,6 +32,8 @@ tonic = "0.14.2"
 tracing = { workspace = true }
 tracing-opentelemetry = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
+opentelemetry-resource-detectors = "0.10.0"
+opentelemetry-semantic-conventions = "0.31.0"
 
 [dev-dependencies]
 mock-collector = "0.2.6"

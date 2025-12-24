@@ -136,9 +136,9 @@ guard.shutdown()?;
 ```rust
 let _guard = OtelSdkBuilder::new()
     .service_name("my-service")
-    .disable_traces()
-    .disable_metrics()
-    .disable_logs()
+    .traces(false)
+    .metrics(false)
+    .logs(false)
     .build()?;
 ```
 
@@ -151,6 +151,85 @@ let _guard = OtelSdkBuilder::new()
     .resource_attribute("team", "Australia II")
     .build()?;
 ```
+
+## Instrumentation Scope Name
+
+By default, the instrumentation scope name (`otel.library.name`) is set to the service name. You can override it explicitly:
+
+```rust
+let _guard = OtelSdkBuilder::new()
+    .service_name("my-api")
+    .instrumentation_scope_name("my-api-tracing")
+    .build()?;
+```
+
+## Compute Environment Detection
+
+Resource attributes are automatically detected based on the compute environment. By default (`Auto`), generic detectors run and the environment is probed:
+
+```rust
+use opentelemetry_configuration::{OtelSdkBuilder, ComputeEnvironment};
+
+// Explicit Lambda environment
+let _guard = OtelSdkBuilder::new()
+    .service_name("my-lambda")
+    .compute_environment(ComputeEnvironment::Lambda)
+    .build()?;
+
+// Kubernetes environment
+let _guard = OtelSdkBuilder::new()
+    .service_name("my-k8s-service")
+    .compute_environment(ComputeEnvironment::Kubernetes)
+    .build()?;
+
+// No automatic detection
+let _guard = OtelSdkBuilder::new()
+    .service_name("my-service")
+    .compute_environment(ComputeEnvironment::None)
+    .build()?;
+```
+
+Available environments:
+- `Auto` (default): Runs host/OS/process/Rust detectors, probes for Lambda and K8s
+- `Lambda`: Generic detectors + Rust detector + Lambda-specific attributes (faas.*, cloud.*)
+- `Kubernetes`: Generic detectors + Rust detector + K8s detector
+- `None`: No automatic detection
+
+## Rust Build Information
+
+### Runtime Detection (Automatic)
+
+All compute environments (except `None`) automatically detect Rust-specific attributes:
+- `process.runtime.name` = "rust"
+- `rust.target_os`, `rust.target_arch`, `rust.target_family`
+- `rust.debug` (true for debug builds)
+- `process.executable.size` (binary size in bytes)
+
+### Compile-Time Information (Optional)
+
+To capture rustc version and channel, add to your `build.rs`:
+
+```rust
+fn main() {
+    opentelemetry_configuration::emit_rustc_env();
+}
+```
+
+Then in your application:
+
+```rust
+use opentelemetry_configuration::{OtelSdkBuilder, capture_rust_build_info};
+
+let _guard = OtelSdkBuilder::new()
+    .service_name("my-service")
+    .with_rust_build_info(capture_rust_build_info!())
+    .build()?;
+```
+
+This adds:
+- `process.runtime.version` (e.g., "1.84.0")
+- `process.runtime.description` (full rustc version string)
+- `rust.channel` ("stable", "beta", or "nightly")
 
 ## Licence
 
