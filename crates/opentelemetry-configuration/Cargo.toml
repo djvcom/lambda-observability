@@ -36,7 +36,7 @@ opentelemetry-resource-detectors = "0.10.0"
 opentelemetry-semantic-conventions = "0.31.0"
 
 [dev-dependencies]
-mock-collector = "0.2.6"
+mock-collector = "0.2.7"
 temp-env = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 serial_test = "3.2.0"

@@ -58,7 +58,7 @@ chrono.workspace = true
 lambda_http = "1.0.2"
 tracing-subscriber = { workspace = true, features = ["fmt"] }
 serde = { workspace = true, features = ["derive"] }
-mock-collector = "0.2.6"
+mock-collector = "0.2.7"
 opentelemetry-configuration = { path = "../opentelemetry-configuration" }
 
 [[example]]
