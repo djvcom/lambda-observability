@@ -44,7 +44,7 @@ opentelemetry-otlp.workspace = true
 opentelemetry_sdk.workspace = true
 proptest = "1.9.0"
 regex = "1.12.2"
-serial_test = "3.2.0"
+serial_test = "3.3.1"
 temp-env = { version = "0.3", features = ["async_closure"] }
 tokio = { workspace = true, features = ["test-util"] }
 tracing-subscriber = { workspace = true, features = ["fmt", "ansi"] }
