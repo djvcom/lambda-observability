@@ -58,7 +58,7 @@ lambda_runtime.workspace = true
 mock-collector = "0.2.7"
 temp-env.workspace = true
 tempfile = "3.24.0"
-serial_test = "3.2.0"
+serial_test = "3.3.1"
 criterion = "0.8.1"
 proptest = "1.9.0"
 

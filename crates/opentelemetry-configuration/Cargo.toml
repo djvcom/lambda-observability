@@ -39,4 +39,4 @@ opentelemetry-semantic-conventions = "0.31.0"
 mock-collector = "0.2.7"
 temp-env = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
-serial_test = "3.2.0"
+serial_test = "3.3.1"
