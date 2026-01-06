@@ -58,6 +58,5 @@ pub use telemetry::{
 pub use tracing::{W3CTraceContext, XRayTraceHeader};
 
 pub use opentelemetry_configuration::{
-    ExportFailure, ExportFallback, FailedRequest, FallbackHandler, OtelGuard, OtelSdkBuilder,
-    OtelSdkConfig, Protocol as OtelProtocol, SdkError,
+    OtelGuard, OtelSdkBuilder, OtelSdkConfig, Protocol as OtelProtocol, SdkError,
 };

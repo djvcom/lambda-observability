@@ -8,10 +8,6 @@ name = "lambda-simulator"
 changelog_include = ["feat", "fix", "refactor", "docs", "perf"]
 
 [[package]]
-name = "opentelemetry-configuration"
-changelog_include = ["feat", "fix", "refactor", "docs", "perf"]
-
-[[package]]
 name = "opentelemetry-lambda-tower"
 changelog_include = ["feat", "fix", "refactor", "docs", "perf"]
 
