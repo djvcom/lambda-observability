@@ -1573,11 +1573,12 @@ dependencies = [
 
 [[package]]
 name = "opentelemetry-configuration"
-version = "0.2.0"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d378be414fd32b46b216a631907f16ed2ba876631aca1d67646dd16becb5b7f9"
 dependencies = [
  "figment",
  "humantime-serde",
- "mock-collector",
  "opentelemetry",
  "opentelemetry-appender-tracing",
  "opentelemetry-otlp",
@@ -1587,11 +1588,7 @@ dependencies = [
  "opentelemetry_sdk",
  "prost",
  "serde",
- "serde_json",
- "serial_test",
- "temp-env",
  "thiserror 2.0.17",
- "tokio",
  "tonic",
  "tracing",
  "tracing-opentelemetry",

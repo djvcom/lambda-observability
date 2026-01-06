@@ -94,7 +94,7 @@ jobs:
         run: cargo doc --workspace --no-deps --all-features
 
   msrv:
-    name: MSRV (1.91.1)
+    name: MSRV (1.92)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -102,7 +102,7 @@ jobs:
       - name: Install Rust toolchain (MSRV)
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: "1.91.1"
+          toolchain: "1.92"
 
       - name: Cache cargo registry
         uses: Swatinem/rust-cache@v2
