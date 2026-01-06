@@ -28,6 +28,10 @@ use serial_test::serial;
 use std::time::Duration;
 use temp_env::async_with_vars;
 
+/// Test ports - use high ports to avoid conflicts with local collectors
+const TEST_OTLP_PORT: u16 = 24318;
+const TEST_TELEMETRY_PORT: u16 = 29001;
+
 #[tokio::test]
 #[serial]
 async fn test_e2e_trace_propagation_and_platform_telemetry() {
@@ -82,12 +86,12 @@ async fn test_e2e_trace_propagation_and_platform_telemetry() {
         },
         telemetry_api: TelemetryApiConfig {
             enabled: true,
-            listener_port: 9001,
+            listener_port: TEST_TELEMETRY_PORT,
             buffer_size: 100,
         },
         receiver: ReceiverConfig {
             http_enabled: true,
-            http_port: 4318,
+            http_port: TEST_OTLP_PORT,
             ..Default::default()
         },
         flush: FlushConfig {
@@ -142,7 +146,7 @@ async fn test_e2e_trace_propagation_and_platform_telemetry() {
     );
 
     // Wait for OTLP receiver to be ready
-    wait_for_http_ready(4318, Duration::from_secs(5))
+    wait_for_http_ready(TEST_OTLP_PORT, Duration::from_secs(5))
         .await
         .expect("OTLP receiver did not become ready");
     println!("OTLP receiver is ready");
@@ -182,6 +186,7 @@ async fn test_e2e_trace_propagation_and_platform_telemetry() {
         .unwrap();
 
     let request_id = invocation.request_id.clone();
+    let otlp_endpoint = format!("http://127.0.0.1:{}", TEST_OTLP_PORT);
 
     // Run the Lambda runtime with our function
     async_with_vars(
@@ -191,7 +196,7 @@ async fn test_e2e_trace_propagation_and_platform_telemetry() {
             ("AWS_LAMBDA_FUNCTION_VERSION", Some("$LATEST")),
             ("AWS_LAMBDA_FUNCTION_MEMORY_SIZE", Some("128")),
             ("AWS_REGION", Some("us-east-1")),
-            ("OTEL_EXPORTER_OTLP_ENDPOINT", Some("http://127.0.0.1:4318")),
+            ("OTEL_EXPORTER_OTLP_ENDPOINT", Some(otlp_endpoint.as_str())),
         ],
         async {
             // Enqueue the invocation
@@ -474,7 +479,7 @@ async fn test_e2e_missing_traceparent_creates_new_trace() {
         },
         receiver: ReceiverConfig {
             http_enabled: true,
-            http_port: 4318, // Tests are serial so port reuse is safe
+            http_port: TEST_OTLP_PORT,
             ..Default::default()
         },
         flush: FlushConfig {
@@ -509,7 +514,7 @@ async fn test_e2e_missing_traceparent_creates_new_trace() {
         .expect("Extension did not register");
 
     // Wait for OTLP receiver to be ready
-    wait_for_http_ready(4318, Duration::from_secs(5))
+    wait_for_http_ready(TEST_OTLP_PORT, Duration::from_secs(5))
         .await
         .expect("OTLP receiver did not become ready");
 
@@ -540,6 +545,7 @@ async fn test_e2e_missing_traceparent_creates_new_trace() {
         .unwrap();
 
     let request_id = invocation.request_id.clone();
+    let otlp_endpoint = format!("http://127.0.0.1:{}", TEST_OTLP_PORT);
 
     async_with_vars(
         [
@@ -547,7 +553,7 @@ async fn test_e2e_missing_traceparent_creates_new_trace() {
             ("AWS_LAMBDA_FUNCTION_NAME", Some("otel-no-trace-test")),
             ("AWS_LAMBDA_FUNCTION_VERSION", Some("$LATEST")),
             ("AWS_LAMBDA_FUNCTION_MEMORY_SIZE", Some("128")),
-            ("OTEL_EXPORTER_OTLP_ENDPOINT", Some("http://127.0.0.1:4318")),
+            ("OTEL_EXPORTER_OTLP_ENDPOINT", Some(otlp_endpoint.as_str())),
         ],
         async {
             simulator.enqueue(invocation).await;
