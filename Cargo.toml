@@ -26,11 +26,11 @@ tracing-opentelemetry = "0.32"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid = { version = "1.19", features = ["v4", "serde"] }
 
-lambda-simulator = { version = "0.1.4", path = "crates/lambda-simulator" }
+lambda-simulator = { version = "0.1.5", path = "crates/lambda-simulator" }
 opentelemetry-configuration = "0.3.0"
-opentelemetry-lambda-extension = { version = "0.1.5", path = "crates/opentelemetry-lambda-extension" }
+opentelemetry-lambda-extension = { version = "0.1.6", path = "crates/opentelemetry-lambda-extension" }
 opentelemetry-lambda-example = { path = "crates/opentelemetry-lambda-example" }
-opentelemetry-lambda-tower = { version = "0.1.4", path = "crates/opentelemetry-lambda-tower" }
+opentelemetry-lambda-tower = { version = "0.1.5", path = "crates/opentelemetry-lambda-tower" }
 
 [package]
 name = "lambda-observability"

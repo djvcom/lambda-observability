@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.6](https://github.com/djvcom/lambda-observability/compare/opentelemetry-lambda-extension-v0.1.5...opentelemetry-lambda-extension-v0.1.6) - 2026-01-06
+
+### Added
+
+- feat!(workspace): remove opentelemetry-configuration crate ([#40](https://github.com/djvcom/lambda-observability/pull/40))
+
+### Other
+
+- *(deps)* bump the rust-minor-patch group with 4 updates ([#39](https://github.com/djvcom/lambda-observability/pull/39))
+- *(deps)* bump mock-collector in the rust-minor-patch group ([#37](https://github.com/djvcom/lambda-observability/pull/37))
+
 ## [0.1.5](https://github.com/djvcom/lambda-observability/compare/opentelemetry-lambda-extension-v0.1.4...opentelemetry-lambda-extension-v0.1.5) - 2025-12-24
 
 ### Other
