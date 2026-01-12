@@ -36,9 +36,9 @@ opentelemetry-proto.workspace = true
 axum = { workspace = true, features = ["tokio"] }
 tower = { version = "0.5.2", features = ["timeout"] }
 bytes = "1.11.0"
-prost = "0.14.1"
+prost = "0.14.3"
 chrono = { workspace = true, features = ["serde"] }
-flate2 = "1.1.7"
+flate2 = "1.1.8"
 hex = "0.4.3"
 lambda-extension = "1.0.2"
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
