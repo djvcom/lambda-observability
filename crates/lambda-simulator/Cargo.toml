@@ -20,7 +20,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 axum.workspace = true
 chrono.workspace = true
 http-body = "1.0"
-nix = { version = "0.30", features = ["signal", "process"] }
+nix = { version = "0.31", features = ["signal", "process"] }
 pin-project-lite = "0.2"
 reqwest = { workspace = true, features = ["blocking"] }
 serde.workspace = true
