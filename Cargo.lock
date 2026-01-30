@@ -1474,9 +1474,9 @@ dependencies = [
 
 [[package]]
 name = "mock-collector"
-version = "0.2.7"
+version = "0.2.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1a94656ba40e6d5f90e7f1b5084b09721d8464c3ed4a0294a084c44554aae62a"
+checksum = "9a1203b5eec089842959ce167ffa810496ab605765fa3ddf5b0a2a8304282f83"
 dependencies = [
  "axum",
  "opentelemetry-otlp",
@@ -2940,9 +2940,9 @@ dependencies = [
 
 [[package]]
 name = "tokio-stream"
-version = "0.1.17"
+version = "0.1.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eca58d7bba4a75707817a2c44174253f9236b2d5fbd055602e9d5c07c139a047"
+checksum = "32da49809aab5c3bc678af03902d4ccddea2a87d028d86392a4b1560c6906c70"
 dependencies = [
  "futures-core",
  "pin-project-lite",
