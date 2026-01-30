@@ -38,7 +38,7 @@ criterion = "0.8.1"
 hex = "0.4.3"
 http-body-util = "0.1"
 lambda_runtime = { version = "1.0", features = ["tracing"] }
-mock-collector = "0.2.7"
+mock-collector = "0.2.8"
 opentelemetry.workspace = true
 opentelemetry-otlp.workspace = true
 opentelemetry_sdk.workspace = true
