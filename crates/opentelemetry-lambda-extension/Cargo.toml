@@ -35,7 +35,7 @@ opentelemetry_sdk.workspace = true
 opentelemetry-proto.workspace = true
 axum = { workspace = true, features = ["tokio"] }
 tower = { version = "0.5.3", features = ["timeout"] }
-bytes = "1.11.0"
+bytes = "1.11.1"
 prost = "0.14.3"
 chrono = { workspace = true, features = ["serde"] }
 flate2 = "1.1.9"
@@ -59,7 +59,7 @@ mock-collector = "0.2.8"
 temp-env.workspace = true
 tempfile = "3.24.0"
 serial_test = "3.3.1"
-criterion = "0.8.1"
+criterion = "0.8.2"
 proptest = "1.9.0"
 
 [[bench]]
