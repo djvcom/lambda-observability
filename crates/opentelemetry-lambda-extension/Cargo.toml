@@ -60,7 +60,7 @@ temp-env.workspace = true
 tempfile = "3.24.0"
 serial_test = "3.3.1"
 criterion = "0.8.2"
-proptest = "1.9.0"
+proptest = "1.10.0"
 
 [[bench]]
 name = "conversion"
