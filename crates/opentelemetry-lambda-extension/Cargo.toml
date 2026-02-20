@@ -43,10 +43,10 @@ hex = "0.4.3"
 lambda-extension = "1.0.2"
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 opentelemetry-semantic-conventions = { version = "0.31", features = ["semconv_experimental"] }
-anyhow = "1.0.101"
+anyhow = "1.0.102"
 opentelemetry-otlp = { workspace = true, features = ["http-proto", "grpc-tonic"] }
 opentelemetry-appender-tracing = "0.31.1"
-tonic = "0.14.4"
+tonic = "0.14.5"
 tracing-opentelemetry.workspace = true
 humantime-serde = "1.1.1"
 rand = "0.10.0"
