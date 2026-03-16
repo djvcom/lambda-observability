@@ -144,9 +144,9 @@ dependencies = [
 
 [[package]]
 name = "aws_lambda_events"
-version = "1.1.0"
+version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8ef5107ebf7c7fa98b029b3e77d2072a3cd257e7b47b29d143a5d7c4cfa1a67d"
+checksum = "087b1b9233c7fc56623d72bb2f0b1fe915b19a0606aa3c09bcd1b902d9803e6c"
 dependencies = [
  "base64 0.22.1",
  "bytes",
@@ -646,7 +646,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1305,9 +1305,9 @@ dependencies = [
 
 [[package]]
 name = "lambda-extension"
-version = "1.0.2"
+version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dacd46cb4a3ad2bff64f27d1711ad7bed77e8aa244fd244b84d4cf280586a023"
+checksum = "5f2c5885912a339367442b38e5f9cd99938f5d5fc39fbe81fefc0079a08158a2"
 dependencies = [
  "async-stream",
  "chrono",
@@ -1373,9 +1373,9 @@ dependencies = [
 
 [[package]]
 name = "lambda_http"
-version = "1.0.2"
+version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a0b02fac5bd704497e93f0acacfa3c7942866b58b370d3aefaefb75a0f0eb7b2"
+checksum = "b0f0300091919bd7c3d953bd0fb6a7a170d24f333486e4129421c0f6aa1164ac"
 dependencies = [
  "aws_lambda_events",
  "bytes",
@@ -1398,9 +1398,9 @@ dependencies = [
 
 [[package]]
 name = "lambda_runtime"
-version = "1.0.2"
+version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dc0b4409eea054e4c06f0101fed547b2cf208e8eca9dc6d41dead4114577852b"
+checksum = "23583c918bee8de7bc005ba2ad8ebd84529894bfd9a863cf24226bb6c7787690"
 dependencies = [
  "async-stream",
  "base64 0.22.1",
@@ -1576,7 +1576,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2403,7 +2403,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2460,7 +2460,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2882,7 +2882,7 @@ dependencies = [
  "getrandom 0.4.1",
  "once_cell",
  "rustix",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -3578,7 +3578,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

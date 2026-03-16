@@ -10,7 +10,7 @@ license = "MIT"
 [workspace.dependencies]
 axum = "0.8"
 chrono = { version = "0.4", features = ["serde"] }
-lambda_runtime = "1.0"
+lambda_runtime = "1.1"
 opentelemetry = "0.31"
 opentelemetry_sdk = { version = "0.31", features = ["rt-tokio"] }
 opentelemetry-otlp = { version = "0.31", default-features = false, features = ["grpc-tonic", "http-proto", "reqwest-blocking-client", "trace", "logs", "metrics"] }
