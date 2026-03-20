@@ -40,7 +40,7 @@ prost = "0.14.3"
 chrono = { workspace = true, features = ["serde"] }
 flate2 = "1.1.9"
 hex = "0.4.3"
-lambda-extension = "1.0.3"
+lambda-extension = "1.0.4"
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 opentelemetry-semantic-conventions = { version = "0.31", features = ["semconv_experimental"] }
 anyhow = "1.0.102"
