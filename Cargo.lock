@@ -1532,9 +1532,9 @@ dependencies = [
 
 [[package]]
 name = "mock-collector"
-version = "0.2.9"
+version = "0.2.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c25c82f878894f81e98f6c66871b44474279a07167e01ed241e3a942f3d68d04"
+checksum = "8a16942c2901265e7975746860278a7cde5cf5f9a076949e60c15fbf479a4873"
 dependencies = [
  "axum",
  "opentelemetry-otlp",
