@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.6](https://github.com/djvcom/lambda-observability/compare/lambda-simulator-v0.1.5...lambda-simulator-v0.1.6) - 2026-04-22
+
+### Other
+
+- *(deps)* bump the rust-minor-patch group with 2 updates ([#80](https://github.com/djvcom/lambda-observability/pull/80))
+- *(deps)* bump mock-collector in the rust-minor-patch group ([#75](https://github.com/djvcom/lambda-observability/pull/75))
+- *(deps)* bump proptest in the rust-minor-patch group ([#72](https://github.com/djvcom/lambda-observability/pull/72))
+- *(deps)* bump the rust-minor-patch group with 4 updates ([#69](https://github.com/djvcom/lambda-observability/pull/69))
+- *(deps)* bump the rust-minor-patch group with 2 updates ([#67](https://github.com/djvcom/lambda-observability/pull/67))
+- *(deps)* bump the rust-minor-patch group with 2 updates ([#63](https://github.com/djvcom/lambda-observability/pull/63))
+- *(deps)* bump mock-collector in the rust-minor-patch group ([#61](https://github.com/djvcom/lambda-observability/pull/61))
+- *(deps)* bump proptest in the rust-minor-patch group ([#55](https://github.com/djvcom/lambda-observability/pull/55))
+- *(deps)* bump the rust-minor-patch group with 3 updates ([#54](https://github.com/djvcom/lambda-observability/pull/54))
+- *(deps)* bump mock-collector in the rust-minor-patch group ([#52](https://github.com/djvcom/lambda-observability/pull/52))
+- *(deps)* bump nix from 0.30.1 to 0.31.0 ([#48](https://github.com/djvcom/lambda-observability/pull/48))
+
 ## [0.1.5](https://github.com/djvcom/lambda-observability/compare/lambda-simulator-v0.1.4...lambda-simulator-v0.1.5) - 2026-01-06
 
 ### Other

@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.7](https://github.com/djvcom/lambda-observability/compare/opentelemetry-lambda-extension-v0.1.6...opentelemetry-lambda-extension-v0.1.7) - 2026-04-22
+
+### Other
+
+- *(opentelemetry-lambda-extension)* pass child cancellation token to receiver ([#81](https://github.com/djvcom/lambda-observability/pull/81))
+- *(deps)* bump the rust-minor-patch group with 2 updates ([#80](https://github.com/djvcom/lambda-observability/pull/80))
+- *(deps)* bump rand in the rust-minor-patch group ([#78](https://github.com/djvcom/lambda-observability/pull/78))
+- *(deps)* bump mock-collector in the rust-minor-patch group ([#75](https://github.com/djvcom/lambda-observability/pull/75))
+- *(deps)* bump proptest in the rust-minor-patch group ([#72](https://github.com/djvcom/lambda-observability/pull/72))
+- *(deps)* bump the rust-minor-patch group with 4 updates ([#70](https://github.com/djvcom/lambda-observability/pull/70))
+- *(deps)* bump the rust-minor-patch group with 4 updates ([#69](https://github.com/djvcom/lambda-observability/pull/69))
+- *(deps)* bump the rust-minor-patch group with 2 updates ([#67](https://github.com/djvcom/lambda-observability/pull/67))
+- *(deps)* bump the rust-minor-patch group with 4 updates ([#64](https://github.com/djvcom/lambda-observability/pull/64))
+- *(deps)* bump the rust-minor-patch group with 2 updates ([#63](https://github.com/djvcom/lambda-observability/pull/63))
+- *(deps)* bump the rust-minor-patch group with 2 updates ([#62](https://github.com/djvcom/lambda-observability/pull/62))
+- *(deps)* bump mock-collector in the rust-minor-patch group ([#61](https://github.com/djvcom/lambda-observability/pull/61))
+- *(deps)* bump the rust-minor-patch group with 3 updates ([#60](https://github.com/djvcom/lambda-observability/pull/60))
+- *(deps)* bump rand from 0.9.2 to 0.10.0 ([#58](https://github.com/djvcom/lambda-observability/pull/58))
+- *(deps)* bump tempfile in the rust-minor-patch group ([#59](https://github.com/djvcom/lambda-observability/pull/59))
+- *(deps)* bump anyhow in the rust-minor-patch group ([#56](https://github.com/djvcom/lambda-observability/pull/56))
+- *(deps)* bump proptest in the rust-minor-patch group ([#55](https://github.com/djvcom/lambda-observability/pull/55))
+- *(deps)* bump the rust-minor-patch group with 3 updates ([#54](https://github.com/djvcom/lambda-observability/pull/54))
+- *(deps)* bump flate2 in the rust-minor-patch group ([#53](https://github.com/djvcom/lambda-observability/pull/53))
+- *(deps)* bump mock-collector in the rust-minor-patch group ([#52](https://github.com/djvcom/lambda-observability/pull/52))
+- *(deps)* bump tonic in the rust-minor-patch group ([#51](https://github.com/djvcom/lambda-observability/pull/51))
+- *(deps)* bump tower in the rust-minor-patch group ([#45](https://github.com/djvcom/lambda-observability/pull/45))
+- *(deps)* bump the rust-minor-patch group with 3 updates ([#44](https://github.com/djvcom/lambda-observability/pull/44))
+- *(deps)* bump the rust-minor-patch group with 3 updates ([#42](https://github.com/djvcom/lambda-observability/pull/42))
+
 ## [0.1.6](https://github.com/djvcom/lambda-observability/compare/opentelemetry-lambda-extension-v0.1.5...opentelemetry-lambda-extension-v0.1.6) - 2026-01-06
 
 ### Added
