@@ -49,13 +49,13 @@ opentelemetry-appender-tracing = "0.31.1"
 tonic = "0.14.5"
 tracing-opentelemetry.workspace = true
 humantime-serde = "1.1.1"
-rand = "0.10.0"
+rand = "0.10.1"
 
 [dev-dependencies]
 lambda-simulator.workspace = true
 opentelemetry-lambda-example.workspace = true
 lambda_runtime.workspace = true
-mock-collector = "0.2.10"
+mock-collector = "0.2.11"
 temp-env.workspace = true
 tempfile = "3.27.0"
 serial_test = "3.4.0"
