@@ -9,9 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.1.7](https://github.com/djvcom/lambda-observability/compare/opentelemetry-lambda-extension-v0.1.6...opentelemetry-lambda-extension-v0.1.7) - 2026-04-22
 
+### Security
+
+- Ship updated transitive TLS dependencies to address advisories against `aws-lc-sys` ([RUSTSEC-2026-0044](https://rustsec.org/advisories/RUSTSEC-2026-0044), [RUSTSEC-2026-0045](https://rustsec.org/advisories/RUSTSEC-2026-0045), [RUSTSEC-2026-0046](https://rustsec.org/advisories/RUSTSEC-2026-0046), [RUSTSEC-2026-0047](https://rustsec.org/advisories/RUSTSEC-2026-0047), [RUSTSEC-2026-0048](https://rustsec.org/advisories/RUSTSEC-2026-0048)) and `rustls-webpki` ([RUSTSEC-2026-0098](https://rustsec.org/advisories/RUSTSEC-2026-0098), [RUSTSEC-2026-0099](https://rustsec.org/advisories/RUSTSEC-2026-0099), [RUSTSEC-2026-0104](https://rustsec.org/advisories/RUSTSEC-2026-0104)) ([#83](https://github.com/djvcom/lambda-observability/pull/83)).
+
 ### Other
 
-- *(opentelemetry-lambda-extension)* pass child cancellation token to receiver ([#81](https://github.com/djvcom/lambda-observability/pull/81))
+- *(opentelemetry-lambda-extension)* pass child cancellation token to receiver, by @ymgyt — first external contribution, thank you! ([#81](https://github.com/djvcom/lambda-observability/pull/81))
 - *(deps)* bump the rust-minor-patch group with 2 updates ([#80](https://github.com/djvcom/lambda-observability/pull/80))
 - *(deps)* bump rand in the rust-minor-patch group ([#78](https://github.com/djvcom/lambda-observability/pull/78))
 - *(deps)* bump mock-collector in the rust-minor-patch group ([#75](https://github.com/djvcom/lambda-observability/pull/75))
