@@ -1333,7 +1333,7 @@ dependencies = [
  "lambda_runtime",
  "mock-collector",
  "nix",
- "opentelemetry",
+ "opentelemetry 0.31.0",
  "opentelemetry-otlp",
  "opentelemetry_sdk",
  "pin-project-lite",
@@ -1608,12 +1608,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "opentelemetry"
+version = "0.32.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b0142c63252a9e054e68a4c61a5778f7b14f576274d593f8ce883d191a099682"
+dependencies = [
+ "js-sys",
+]
+
+[[package]]
 name = "opentelemetry-appender-tracing"
 version = "0.31.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ef6a1ac5ca3accf562b8c306fa8483c85f4390f768185ab775f242f7fe8fdcc2"
 dependencies = [
- "opentelemetry",
+ "opentelemetry 0.31.0",
+ "tracing",
+ "tracing-core",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "opentelemetry-appender-tracing"
+version = "0.32.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2c0080f0dc1d7c786f467cd85a4e395fcab11ee852004f39a29a18ab7c25d837"
+dependencies = [
+ "opentelemetry 0.32.0",
  "tracing",
  "tracing-core",
  "tracing-subscriber",
@@ -1627,8 +1648,8 @@ checksum = "d993fdc96d4fd15f012d07d8bec318ca5eb5480443d6124f5e2fb2d4b942d7e7"
 dependencies = [
  "figment",
  "humantime-serde",
- "opentelemetry",
- "opentelemetry-appender-tracing",
+ "opentelemetry 0.31.0",
+ "opentelemetry-appender-tracing 0.31.1",
  "opentelemetry-otlp",
  "opentelemetry-proto",
  "opentelemetry-resource-detectors",
@@ -1652,7 +1673,7 @@ dependencies = [
  "async-trait",
  "bytes",
  "http",
- "opentelemetry",
+ "opentelemetry 0.31.0",
  "reqwest 0.12.28",
 ]
 
@@ -1663,7 +1684,7 @@ dependencies = [
  "aws_lambda_events",
  "lambda-simulator",
  "lambda_runtime",
- "opentelemetry",
+ "opentelemetry 0.31.0",
  "opentelemetry-configuration",
  "opentelemetry-lambda-tower",
  "opentelemetry-otlp",
@@ -1694,8 +1715,8 @@ dependencies = [
  "lambda-simulator",
  "lambda_runtime",
  "mock-collector",
- "opentelemetry",
- "opentelemetry-appender-tracing",
+ "opentelemetry 0.31.0",
+ "opentelemetry-appender-tracing 0.32.0",
  "opentelemetry-configuration",
  "opentelemetry-lambda-example",
  "opentelemetry-otlp",
@@ -1732,7 +1753,7 @@ dependencies = [
  "lambda_http",
  "lambda_runtime",
  "mock-collector",
- "opentelemetry",
+ "opentelemetry 0.31.0",
  "opentelemetry-configuration",
  "opentelemetry-semantic-conventions 0.32.0",
  "opentelemetry-stdout",
@@ -1758,7 +1779,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1f69cd6acbb9af919df949cd1ec9e5e7fdc2ef15d234b6b795aaa525cc02f71f"
 dependencies = [
  "http",
- "opentelemetry",
+ "opentelemetry 0.31.0",
  "opentelemetry-http",
  "opentelemetry-proto",
  "opentelemetry_sdk",
@@ -1777,7 +1798,7 @@ checksum = "a7175df06de5eaee9909d4805a3d07e28bb752c34cab57fa9cff549da596b30f"
 dependencies = [
  "base64 0.22.1",
  "const-hex",
- "opentelemetry",
+ "opentelemetry 0.31.0",
  "opentelemetry_sdk",
  "prost",
  "serde",
@@ -1792,7 +1813,7 @@ version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e82845106cf72d47c141cee7f0d95e0650d8f28c6222a1f1ae727a8883899c19"
 dependencies = [
- "opentelemetry",
+ "opentelemetry 0.31.0",
  "opentelemetry-semantic-conventions 0.31.0",
  "opentelemetry_sdk",
 ]
@@ -1816,7 +1837,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bc8887887e169414f637b18751487cce4e095be787d23fad13c454e2fb1b3811"
 dependencies = [
  "chrono",
- "opentelemetry",
+ "opentelemetry 0.31.0",
  "opentelemetry_sdk",
 ]
 
@@ -1829,7 +1850,7 @@ dependencies = [
  "futures-channel",
  "futures-executor",
  "futures-util",
- "opentelemetry",
+ "opentelemetry 0.31.0",
  "percent-encoding",
  "rand 0.9.2",
  "thiserror 2.0.18",
@@ -3249,7 +3270,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1ac28f2d093c6c477eaa76b23525478f38de514fa9aeb1285738d4b97a9552fc"
 dependencies = [
  "js-sys",
- "opentelemetry",
+ "opentelemetry 0.31.0",
  "smallvec",
  "tracing",
  "tracing-core",
