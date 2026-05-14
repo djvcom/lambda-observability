@@ -11,7 +11,7 @@ license = "MIT"
 axum = "0.8"
 chrono = { version = "0.4", features = ["serde"] }
 lambda_runtime = "1.2"
-opentelemetry = "0.31"
+opentelemetry = "0.32"
 opentelemetry_sdk = { version = "0.31", features = ["rt-tokio"] }
 opentelemetry-otlp = { version = "0.32", default-features = false, features = ["grpc-tonic", "http-proto", "reqwest-blocking-client", "trace", "logs", "metrics"] }
 opentelemetry-proto = { version = "0.31", features = ["gen-tonic-messages", "with-serde", "trace"] }
