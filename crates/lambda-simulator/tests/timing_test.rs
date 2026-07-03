@@ -508,6 +508,19 @@ async fn test_extension_overhead_can_exceed_deadline() {
         .await
         .unwrap();
 
+    // Re-polling /next after receiving the INVOKE signals readiness; the
+    // re-poll long-polls for the next event, so it runs in the background.
+    let repoll_client = client.clone();
+    let repoll_url = format!("{}/2020-01-01/extension/event/next", base_url);
+    let repoll_ext_id = ext_id.clone();
+    tokio::spawn(async move {
+        let _ = repoll_client
+            .get(repoll_url)
+            .header("Lambda-Extension-Identifier", repoll_ext_id)
+            .send()
+            .await;
+    });
+
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     let state = simulator
@@ -599,6 +612,19 @@ async fn test_extension_overhead_minimal_when_fast() {
         .send()
         .await
         .unwrap();
+
+    // Re-polling /next after receiving the INVOKE signals readiness; the
+    // re-poll long-polls for the next event, so it runs in the background.
+    let repoll_client = client.clone();
+    let repoll_url = format!("{}/2020-01-01/extension/event/next", base_url);
+    let repoll_ext_id = ext_id.clone();
+    tokio::spawn(async move {
+        let _ = repoll_client
+            .get(repoll_url)
+            .header("Lambda-Extension-Identifier", repoll_ext_id)
+            .send()
+            .await;
+    });
 
     tokio::time::sleep(Duration::from_millis(100)).await;
 

@@ -347,6 +347,20 @@ async fn test_readiness_tracking_per_subscription() {
         .await
         .unwrap();
 
+    // Re-polling /next after receiving the INVOKE signals the extension has
+    // finished its post-invocation work; this poll long-polls, so run it in
+    // the background.
+    let repoll_client = client.clone();
+    let repoll_url = format!("{}/2020-01-01/extension/event/next", base_url);
+    let repoll_ext_id = ext_a_id.clone();
+    tokio::spawn(async move {
+        let _ = repoll_client
+            .get(repoll_url)
+            .header("Lambda-Extension-Identifier", repoll_ext_id)
+            .send()
+            .await;
+    });
+
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     let report_events = simulator

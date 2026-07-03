@@ -158,7 +158,11 @@ async fn next_event(State(state): State<ExtensionsApiState>, headers: HeaderMap)
 
     match state.extensions.get_extension(&extension_id).await {
         Some(ext) => {
-            state.readiness.mark_extension_ready(&extension_id).await;
+            let delivered_invoke = state.extensions.delivered_invoke(&extension_id).await;
+            state
+                .readiness
+                .mark_extension_ready(&extension_id, delivered_invoke.as_deref())
+                .await;
             tracing::info!(target: "lambda_lifecycle", "⏳ Extension polling /next: {} (waiting)", ext.name);
 
             match state.extensions.next_event(&extension_id).await {

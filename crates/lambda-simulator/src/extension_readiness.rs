@@ -153,15 +153,27 @@ impl ExtensionReadinessTracker {
     /// completed its response. It signals that the extension has finished its
     /// post-invocation work.
     ///
+    /// A poll only counts as readiness for an invocation whose INVOKE event
+    /// the extension has already been delivered: the poll that *delivers*
+    /// the INVOKE must not be mistaken for the extension having finished
+    /// processing it. Real Lambda freezes the environment only once every
+    /// extension polls `/next` again after receiving the event.
+    ///
     /// # Arguments
     ///
     /// * `extension_id` - The ID of the extension signalling readiness
+    /// * `delivered_invoke` - Request ID of the most recent INVOKE event
+    ///   delivered to this extension, if any
     ///
     /// # Returns
     ///
     /// `true` if the extension was marked ready for a pending invocation,
     /// `false` if there was no pending invocation to mark ready for.
-    pub async fn mark_extension_ready(&self, extension_id: &str) -> bool {
+    pub async fn mark_extension_ready(
+        &self,
+        extension_id: &str,
+        delivered_invoke: Option<&str>,
+    ) -> bool {
         let current_request = self.current_request.lock().await.clone();
         let last_request = self.last_completed_request.lock().await.clone();
 
@@ -169,6 +181,7 @@ impl ExtensionReadinessTracker {
 
         // First, check if there's a completed request waiting for readiness
         if let Some(ref request_id) = last_request
+            && delivered_invoke == Some(request_id)
             && let Some(readiness) = invocations.get_mut(request_id)
             && readiness.runtime_done_at.is_some()
             && !readiness.all_ready()
@@ -185,6 +198,7 @@ impl ExtensionReadinessTracker {
         // If no completed request or already ready, check if there's a current
         // in-progress request where we should track this as pending ready
         if let Some(ref request_id) = current_request
+            && delivered_invoke == Some(request_id)
             && let Some(readiness) = invocations.get_mut(request_id)
             && readiness.runtime_done_at.is_none()
             && readiness.expected_extensions.contains(extension_id)
@@ -351,7 +365,7 @@ mod tests {
 
         assert!(!tracker.is_all_ready("req-1").await);
 
-        tracker.mark_extension_ready("ext-1").await;
+        tracker.mark_extension_ready("ext-1", Some("req-1")).await;
 
         assert!(tracker.is_all_ready("req-1").await);
     }
@@ -374,13 +388,13 @@ mod tests {
 
         assert!(!tracker.is_all_ready("req-1").await);
 
-        tracker.mark_extension_ready("ext-1").await;
+        tracker.mark_extension_ready("ext-1", Some("req-1")).await;
         assert!(!tracker.is_all_ready("req-1").await);
 
-        tracker.mark_extension_ready("ext-2").await;
+        tracker.mark_extension_ready("ext-2", Some("req-1")).await;
         assert!(!tracker.is_all_ready("req-1").await);
 
-        tracker.mark_extension_ready("ext-3").await;
+        tracker.mark_extension_ready("ext-3", Some("req-1")).await;
         assert!(tracker.is_all_ready("req-1").await);
     }
 
@@ -398,7 +412,7 @@ mod tests {
         assert!(pending.contains(&"ext-1".to_string()));
         assert!(pending.contains(&"ext-2".to_string()));
 
-        tracker.mark_extension_ready("ext-1").await;
+        tracker.mark_extension_ready("ext-1", Some("req-1")).await;
 
         let pending = tracker.get_pending_extensions("req-1").await;
         assert_eq!(pending.len(), 1);
@@ -422,7 +436,7 @@ mod tests {
 
         tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
-        tracker.mark_extension_ready("ext-1").await;
+        tracker.mark_extension_ready("ext-1", Some("req-1")).await;
 
         let overhead = tracker.get_extension_overhead_ms("req-1").await;
         assert!(overhead.is_some());
