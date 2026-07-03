@@ -115,7 +115,7 @@ impl ExtensionRuntime {
 
         let extension_future = Extension::new()
             .with_events_processor(events_service)
-            .with_telemetry_types(&["platform", "function", "extension"])
+            .with_telemetry_types(&["platform"])
             .with_telemetry_processor(SharedService::new(telemetry_service))
             .run();
 

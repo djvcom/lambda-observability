@@ -13,7 +13,7 @@
 //! # Environment Variables
 //!
 //! - `LAMBDA_OTEL_EXPORTER_ENDPOINT` - OTLP endpoint URL
-//! - `LAMBDA_OTEL_EXPORTER_PROTOCOL` - Protocol: `http` or `grpc`
+//! - `LAMBDA_OTEL_EXPORTER_PROTOCOL` - Protocol: only `http` is supported
 //! - `LAMBDA_OTEL_FLUSH_STRATEGY` - Flush strategy: `default`, `end`, `periodic`, `continuous`
 //!
 //! See the crate documentation for full configuration options.
@@ -38,8 +38,7 @@ async fn main() -> Result<()> {
 }
 
 fn init_tracing() -> Result<()> {
-    let filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new("info,opentelemetry_lambda_extension=debug"));
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
 
     tracing_subscriber::registry()
         .with(fmt::layer().with_target(true).without_time())

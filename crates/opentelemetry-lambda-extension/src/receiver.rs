@@ -28,7 +28,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::net::TcpListener;
-use tokio::sync::{Notify, mpsc};
+use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
 /// Signals received from the Lambda function.
@@ -45,8 +45,8 @@ pub enum Signal {
 
 /// Handle for interacting with a running OTLP receiver.
 ///
-/// This handle can be used to query the receiver's status, trigger flushes,
-/// and get the actual bound address (useful when port 0 is used for dynamic allocation).
+/// This handle can be used to query the receiver's status and get the actual
+/// bound address (useful when port 0 is used for dynamic allocation).
 #[derive(Clone)]
 pub struct ReceiverHandle {
     state: Arc<ReceiverState>,
@@ -73,47 +73,6 @@ impl ReceiverHandle {
     pub fn signals_received(&self) -> u64 {
         self.state.signals_received.load(Ordering::Relaxed)
     }
-
-    /// Triggers an immediate flush and waits for it to complete.
-    ///
-    /// Returns `Ok(())` when the flush completes, or `Err` on timeout.
-    pub async fn flush(&self, timeout: std::time::Duration) -> Result<(), FlushError> {
-        // Signal that a flush is requested
-        self.state.flush_requested.notify_one();
-
-        // Wait for flush to complete
-        tokio::time::timeout(timeout, self.state.flush_complete.notified())
-            .await
-            .map_err(|_| FlushError::Timeout)?;
-
-        Ok(())
-    }
-
-    /// Notifies that a flush has completed.
-    ///
-    /// This should be called by the runtime after flushing all signals.
-    pub fn notify_flush_complete(&self) {
-        self.state.flush_complete.notify_waiters();
-    }
-
-    /// Returns a future that resolves when a flush is requested.
-    pub async fn wait_for_flush_request(&self) {
-        self.state.flush_requested.notified().await;
-    }
-
-    /// Returns a reference to the flush request notifier.
-    pub fn flush_requested_notify(&self) -> Arc<Notify> {
-        self.state.flush_requested.clone()
-    }
-}
-
-/// Error returned when a flush operation fails.
-#[non_exhaustive]
-#[derive(Debug, Clone, thiserror::Error)]
-pub enum FlushError {
-    /// The flush operation timed out.
-    #[error("flush operation timed out")]
-    Timeout,
 }
 
 /// OTLP HTTP receiver for collecting signals.
@@ -227,8 +186,6 @@ struct ReceiverState {
     signal_tx: mpsc::Sender<Signal>,
     completion: Arc<CompletionTracker>,
     signals_received: AtomicU64,
-    flush_requested: Arc<Notify>,
-    flush_complete: Arc<Notify>,
 }
 
 impl ReceiverState {
@@ -237,8 +194,6 @@ impl ReceiverState {
             signal_tx,
             completion,
             signals_received: AtomicU64::new(0),
-            flush_requested: Arc::new(Notify::new()),
-            flush_complete: Arc::new(Notify::new()),
         }
     }
 }
@@ -401,13 +356,30 @@ where
     }
 }
 
+/// Largest gzip body accepted after decompression. Bounds the memory a
+/// single request can claim: a small compressed payload can otherwise
+/// expand to an arbitrarily large allocation (a decompression bomb).
+const MAX_DECOMPRESSED_BYTES: u64 = 16 * 1024 * 1024;
+
 fn decompress_gzip(body: &Bytes) -> Result<Vec<u8>, StatusCode> {
-    let mut decoder = GzDecoder::new(body.as_ref());
+    let decoder = GzDecoder::new(body.as_ref());
     let mut decompressed = Vec::new();
-    decoder.read_to_end(&mut decompressed).map_err(|e| {
-        tracing::error!(error = %e, "Failed to decompress gzip body");
-        StatusCode::BAD_REQUEST
-    })?;
+    decoder
+        .take(MAX_DECOMPRESSED_BYTES + 1)
+        .read_to_end(&mut decompressed)
+        .map_err(|e| {
+            tracing::error!(error = %e, "Failed to decompress gzip body");
+            StatusCode::BAD_REQUEST
+        })?;
+
+    if decompressed.len() as u64 > MAX_DECOMPRESSED_BYTES {
+        tracing::warn!(
+            limit_bytes = MAX_DECOMPRESSED_BYTES,
+            "Rejected gzip body exceeding the decompressed size limit"
+        );
+        return Err(StatusCode::PAYLOAD_TOO_LARGE);
+    }
+
     Ok(decompressed)
 }
 

@@ -21,7 +21,6 @@ name = "opentelemetry-lambda-extension"
 path = "src/main.rs"
 
 [dependencies]
-opentelemetry-configuration.workspace = true
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -44,11 +43,6 @@ lambda-extension = "1.0.4"
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 opentelemetry-semantic-conventions = { version = "0.31", features = ["semconv_experimental"] }
 anyhow = "1.0.102"
-opentelemetry-otlp = { workspace = true, features = ["http-proto", "grpc-tonic"] }
-opentelemetry-appender-tracing = "0.31.1"
-tonic = "0.14.5"
-tracing-opentelemetry.workspace = true
-humantime-serde = "1.1.1"
 rand = "0.10.1"
 
 [dev-dependencies]

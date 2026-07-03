@@ -19,8 +19,6 @@ async fn test_receiver_accepts_protobuf_traces() {
     let config = ReceiverConfig {
         http_port: 14318,
         http_enabled: true,
-        grpc_enabled: false,
-        grpc_port: 14317,
     };
 
     let receiver = OtlpReceiver::new(
@@ -90,8 +88,6 @@ async fn test_receiver_accepts_json_traces() {
     let config = ReceiverConfig {
         http_port: 14319,
         http_enabled: true,
-        grpc_enabled: false,
-        grpc_port: 14317,
     };
 
     let receiver = OtlpReceiver::new(
@@ -148,8 +144,6 @@ async fn test_receiver_backpressure() {
     let config = ReceiverConfig {
         http_port: 14320,
         http_enabled: true,
-        grpc_enabled: false,
-        grpc_port: 14317,
     };
 
     let receiver = OtlpReceiver::new(
@@ -199,8 +193,6 @@ async fn test_receiver_invalid_protobuf() {
     let config = ReceiverConfig {
         http_port: 14321,
         http_enabled: true,
-        grpc_enabled: false,
-        grpc_port: 14317,
     };
 
     let receiver = OtlpReceiver::new(
@@ -239,8 +231,6 @@ async fn test_receiver_handles_metrics() {
     let config = ReceiverConfig {
         http_port: 14322,
         http_enabled: true,
-        grpc_enabled: false,
-        grpc_port: 14317,
     };
 
     let receiver = OtlpReceiver::new(
@@ -288,8 +278,6 @@ async fn test_receiver_handles_logs() {
     let config = ReceiverConfig {
         http_port: 14323,
         http_enabled: true,
-        grpc_enabled: false,
-        grpc_port: 14317,
     };
 
     let receiver = OtlpReceiver::new(

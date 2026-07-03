@@ -923,9 +923,10 @@ fn test_otel_031_correct_http_paths() {
     assert_eq!(exporter.endpoint(), Some("http://localhost:4318"));
 }
 
-/// OTEL-032: Content-Type header is application/x-protobuf for HTTP protocol.
+/// OTEL-032: only HTTP/protobuf is supported; selecting gRPC must fail fast
+/// at exporter construction instead of silently losing telemetry.
 #[test]
-fn test_otel_032_content_type_header() {
+fn test_otel_032_grpc_protocol_rejected() {
     use opentelemetry_lambda_extension::{ExporterConfig, OtlpExporter, Protocol};
 
     let http_config = ExporterConfig {
@@ -933,20 +934,13 @@ fn test_otel_032_content_type_header() {
         ..Default::default()
     };
     let http_exporter = OtlpExporter::new(http_config).unwrap();
-
-    // HTTP protocol should use protobuf content type
-    // This is tested in the exporter's content_type() method
-    // The exporter uses "application/x-protobuf" for HTTP
+    assert!(!http_exporter.has_endpoint());
 
     let grpc_config = ExporterConfig {
         protocol: Protocol::Grpc,
         ..Default::default()
     };
-    let grpc_exporter = OtlpExporter::new(grpc_config).unwrap();
-
-    // Verify exporters can be created with both protocols
-    assert!(!http_exporter.has_endpoint());
-    assert!(!grpc_exporter.has_endpoint());
+    assert!(OtlpExporter::new(grpc_config).is_err());
 }
 
 /// OTEL-033: gzip compression works and reduces payload size.

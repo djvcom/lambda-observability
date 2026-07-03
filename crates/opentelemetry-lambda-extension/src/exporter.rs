@@ -23,6 +23,11 @@ const MIN_ATTEMPT_BUDGET: Duration = Duration::from_millis(100);
 /// beyond this size only a summary record is emitted.
 const FALLBACK_MAX_BYTES: usize = 256 * 1024;
 
+/// Largest error response body retained for diagnostics. A misbehaving
+/// collector could otherwise return arbitrarily large bodies that end up
+/// buffered and logged in full.
+const ERROR_BODY_MAX_BYTES: usize = 4 * 1024;
+
 /// Result of an export operation.
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -63,6 +68,10 @@ pub enum ExportError {
     /// Export abandoned because the deadline budget was exhausted.
     #[error("export deadline exceeded")]
     DeadlineExceeded,
+
+    /// The configured protocol is not supported.
+    #[error("the {0:?} protocol is not supported; set exporter.protocol to \"http\"")]
+    UnsupportedProtocol(Protocol),
 }
 
 impl ExportError {
@@ -89,8 +98,15 @@ impl OtlpExporter {
     ///
     /// # Errors
     ///
-    /// Returns an error if the HTTP client cannot be created.
+    /// Returns [`ExportError::UnsupportedProtocol`] when the configuration
+    /// selects a protocol other than HTTP/protobuf, so a misconfiguration
+    /// fails fast at startup instead of silently losing telemetry. Also
+    /// returns an error if the HTTP client cannot be created.
     pub fn new(config: ExporterConfig) -> Result<Self, ExportError> {
+        if config.protocol != Protocol::Http {
+            return Err(ExportError::UnsupportedProtocol(config.protocol));
+        }
+
         let client = Client::builder()
             .timeout(config.timeout)
             .build()
@@ -247,7 +263,14 @@ impl OtlpExporter {
         if status.is_success() {
             Ok(())
         } else {
-            let body = response.text().await.unwrap_or_default();
+            let mut body = response.text().await.unwrap_or_default();
+            if body.len() > ERROR_BODY_MAX_BYTES {
+                let mut end = ERROR_BODY_MAX_BYTES;
+                while !body.is_char_boundary(end) {
+                    end -= 1;
+                }
+                body.truncate(end);
+            }
             Err(ExportError::status(status.as_u16(), body))
         }
     }
@@ -269,10 +292,7 @@ impl OtlpExporter {
     }
 
     fn content_type(&self) -> &'static str {
-        match self.config.protocol {
-            Protocol::Http => "application/x-protobuf",
-            Protocol::Grpc => "application/grpc",
-        }
+        "application/x-protobuf"
     }
 
     fn emit_to_stdout(&self, batch: &BatchedSignal) {
@@ -428,13 +448,20 @@ mod tests {
         };
         let exporter = OtlpExporter::new(config).unwrap();
         assert_eq!(exporter.content_type(), "application/x-protobuf");
+    }
 
+    #[test]
+    fn test_grpc_protocol_is_rejected_at_construction() {
         let config = ExporterConfig {
             protocol: Protocol::Grpc,
             ..Default::default()
         };
-        let exporter = OtlpExporter::new(config).unwrap();
-        assert_eq!(exporter.content_type(), "application/grpc");
+
+        let result = OtlpExporter::new(config);
+        assert!(matches!(
+            result,
+            Err(ExportError::UnsupportedProtocol(Protocol::Grpc))
+        ));
     }
 
     #[test]

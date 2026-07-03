@@ -14,7 +14,7 @@
 //! | Variable | Config Path | Description |
 //! |----------|-------------|-------------|
 //! | `OTEL_EXPORTER_OTLP_ENDPOINT` | `exporter.endpoint` | OTLP endpoint URL |
-//! | `OTEL_EXPORTER_OTLP_PROTOCOL` | `exporter.protocol` | Protocol (http or grpc) |
+//! | `OTEL_EXPORTER_OTLP_PROTOCOL` | `exporter.protocol` | Protocol (only `http` is supported) |
 //! | `OTEL_EXPORTER_OTLP_HEADERS` | `exporter.headers` | Comma-separated key=value pairs |
 //! | `OTEL_EXPORTER_OTLP_COMPRESSION` | `exporter.compression` | Compression (gzip or none) |
 //!
@@ -37,7 +37,8 @@ const ENV_PREFIX: &str = "LAMBDA_OTEL_";
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum Protocol {
-    /// gRPC protocol (port 4317).
+    /// gRPC protocol (port 4317). Parsed for compatibility but not
+    /// supported: the exporter rejects it at startup with a clear error.
     Grpc,
     /// HTTP/protobuf protocol (port 4318).
     #[default]
@@ -163,12 +164,8 @@ impl Default for ExporterConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ReceiverConfig {
-    /// gRPC port (default 4317).
-    pub grpc_port: u16,
     /// HTTP port (default 4318).
     pub http_port: u16,
-    /// Whether to enable the gRPC receiver.
-    pub grpc_enabled: bool,
     /// Whether to enable the HTTP receiver.
     pub http_enabled: bool,
 }
@@ -176,9 +173,7 @@ pub struct ReceiverConfig {
 impl Default for ReceiverConfig {
     fn default() -> Self {
         Self {
-            grpc_port: 4317,
             http_port: 4318,
-            grpc_enabled: true,
             http_enabled: true,
         }
     }
@@ -302,7 +297,10 @@ pub struct TelemetryApiConfig {
     pub enabled: bool,
     /// Port for receiving Telemetry API events.
     pub listener_port: u16,
-    /// Buffer size for Telemetry API events.
+    /// Buffer size for Telemetry API events. Also sets the capacity of the
+    /// channel carrying signals from the OTLP receiver to the aggregator;
+    /// when that channel is full the receiver responds with `503` to signal
+    /// backpressure.
     pub buffer_size: usize,
 }
 
@@ -372,21 +370,9 @@ impl ConfigBuilder {
         self
     }
 
-    /// Enables or disables the gRPC receiver.
-    pub fn grpc_receiver(mut self, enabled: bool) -> Self {
-        self.config.receiver.grpc_enabled = enabled;
-        self
-    }
-
     /// Enables or disables the HTTP receiver.
     pub fn http_receiver(mut self, enabled: bool) -> Self {
         self.config.receiver.http_enabled = enabled;
-        self
-    }
-
-    /// Sets the gRPC receiver port.
-    pub fn grpc_port(mut self, port: u16) -> Self {
-        self.config.receiver.grpc_port = port;
         self
     }
 
@@ -547,9 +533,7 @@ mod tests {
         assert_eq!(config.exporter.timeout, Duration::from_millis(500));
         assert_eq!(config.exporter.compression, Compression::Gzip);
 
-        assert_eq!(config.receiver.grpc_port, 4317);
         assert_eq!(config.receiver.http_port, 4318);
-        assert!(config.receiver.grpc_enabled);
         assert!(config.receiver.http_enabled);
 
         assert_eq!(config.flush.strategy, FlushStrategy::Default);
@@ -574,9 +558,7 @@ mod tests {
             .flush_interval(Duration::from_secs(10))
             .correlation_delay(Duration::from_millis(200))
             .emit_orphaned_spans(false)
-            .grpc_receiver(false)
             .http_receiver(true)
-            .grpc_port(5317)
             .http_port(5318)
             .telemetry_api(false)
             .build();
@@ -594,9 +576,7 @@ mod tests {
             Duration::from_millis(200)
         );
         assert!(!config.correlation.emit_orphaned_spans);
-        assert!(!config.receiver.grpc_enabled);
         assert!(config.receiver.http_enabled);
-        assert_eq!(config.receiver.grpc_port, 5317);
         assert_eq!(config.receiver.http_port, 5318);
         assert!(!config.telemetry_api.enabled);
     }
@@ -611,9 +591,7 @@ protocol = "grpc"
 timeout = 1000
 
 [receiver]
-grpc_port = 5317
 http_port = 5318
-grpc_enabled = false
 
 [flush]
 strategy = "periodic"
@@ -635,9 +613,7 @@ emit_orphaned_spans = false
         );
         assert_eq!(config.exporter.protocol, Protocol::Grpc);
         assert_eq!(config.exporter.timeout, Duration::from_millis(1000));
-        assert_eq!(config.receiver.grpc_port, 5317);
         assert_eq!(config.receiver.http_port, 5318);
-        assert!(!config.receiver.grpc_enabled);
         assert_eq!(config.flush.strategy, FlushStrategy::Periodic);
         assert_eq!(config.flush.interval, Duration::from_secs(15));
         assert_eq!(
@@ -653,7 +629,7 @@ emit_orphaned_spans = false
         let config = Config::load_from_path("/nonexistent/path/config.toml").unwrap();
 
         assert!(config.exporter.endpoint.is_none());
-        assert_eq!(config.receiver.grpc_port, 4317);
+        assert_eq!(config.receiver.http_port, 4318);
     }
 
     #[test]
