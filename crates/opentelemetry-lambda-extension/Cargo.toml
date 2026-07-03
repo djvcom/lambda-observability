@@ -59,3 +59,11 @@ proptest = "1.11.0"
 [[bench]]
 name = "conversion"
 harness = false
+
+[[bench]]
+name = "aggregator"
+harness = false
+
+[[bench]]
+name = "export_encode"
+harness = false
