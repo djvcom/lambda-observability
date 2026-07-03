@@ -163,6 +163,22 @@ async fn post_protobuf(client: &reqwest::Client, path: &str, body: Vec<u8>) {
     );
 }
 
+/// Starts a collector that accepts TCP connections but never responds, so
+/// every export attempt runs to its full request timeout.
+async fn start_tarpit_collector() -> std::net::SocketAddr {
+    let tarpit = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("Failed to bind tarpit listener");
+    let tarpit_addr = tarpit.local_addr().unwrap();
+    tokio::spawn(async move {
+        let mut sockets = Vec::new();
+        while let Ok((socket, _)) = tarpit.accept().await {
+            sockets.push(socket);
+        }
+    });
+    tarpit_addr
+}
+
 /// Signals invocation completion the way a handler wrapper would.
 async fn post_invocation_complete(client: &reqwest::Client, request_id: &str) {
     let _ = client
@@ -342,7 +358,6 @@ async fn runtime_done_backup_flushes_before_freeze() {
             make_trace_request("handler-span").encode_to_vec(),
         )
         .await;
-        // No /invocation/complete: the extension must rely on runtimeDone.
     })
     .await;
 
@@ -385,7 +400,6 @@ async fn late_runtime_done_releases_hold_and_recovers() {
         .await
         .expect("Failed to start simulator");
 
-    // runtimeDone arrives well after the invocation deadline.
     simulator
         .set_telemetry_delivery_policy(
             "platform.runtimeDone",
@@ -407,12 +421,10 @@ async fn late_runtime_done_releases_hold_and_recovers() {
     })
     .await;
 
-    // The extension must not hold /next past the invocation deadline: the
-    // freeze must occur within the deadline plus a small margin.
     simulator
         .wait_for_frozen(Duration::from_secs(6))
         .await
-        .expect("Deadline fallback should release the hold and allow freeze");
+        .expect("Deadline fallback should release the hold within the invocation deadline plus a small margin");
 
     assert!(
         span_count(&collector).await >= 1,
@@ -455,8 +467,6 @@ async fn suppressed_runtime_done_disables_holding_after_first_timeout() {
     let _extension = spawn_extension(&simulator, &collector_endpoint).await;
     let client = reqwest::Client::new();
 
-    // The test handler responds instantly, so the report duration is
-    // dominated by how long the extension held /next afterwards.
     let request_id_1 = run_invocation(&simulator, &client, |_| async {}).await;
     let duration_1 = report_duration_ms(&simulator, &request_id_1).await;
     assert!(
@@ -488,18 +498,7 @@ async fn suppressed_runtime_done_disables_holding_after_first_timeout() {
 #[serial]
 #[ignore = "requires pre-built binaries: cargo build --workspace"]
 async fn shutdown_flush_completes_within_deadline() {
-    // A collector that accepts TCP connections but never responds, so every
-    // export attempt runs to its full request timeout.
-    let tarpit = tokio::net::TcpListener::bind("127.0.0.1:0")
-        .await
-        .expect("Failed to bind tarpit listener");
-    let tarpit_addr = tarpit.local_addr().unwrap();
-    tokio::spawn(async move {
-        let mut sockets = Vec::new();
-        while let Ok((socket, _)) = tarpit.accept().await {
-            sockets.push(socket);
-        }
-    });
+    let tarpit_addr = start_tarpit_collector().await;
 
     const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(2);
 
@@ -513,8 +512,6 @@ async fn shutdown_flush_completes_within_deadline() {
     let extension = spawn_extension(&simulator, &format!("http://{}", tarpit_addr)).await;
     let client = reqwest::Client::new();
 
-    // Backlog across all three signal types so the final flush has several
-    // batches to attempt against the unresponsive collector.
     post_protobuf(
         &client,
         "/v1/traces",
@@ -534,9 +531,6 @@ async fn shutdown_flush_completes_within_deadline() {
         .graceful_shutdown(lambda_simulator::ShutdownReason::Spindown)
         .await;
 
-    // The extension must exit on its own within the SHUTDOWN deadline (plus
-    // a scheduling margin). In real Lambda, exceeding it means SIGKILL and
-    // silently lost telemetry.
     let exit = tokio::time::timeout(
         SHUTDOWN_TIMEOUT + Duration::from_millis(500),
         tokio::task::spawn_blocking(move || {

@@ -501,6 +501,8 @@ mod tests {
         assert_eq!(batch.signal_type(), "traces");
     }
 
+    /// Pushes far more encoded data than the budget allows and checks the
+    /// buffered bytes never exceed it.
     #[tokio::test]
     async fn test_queue_never_exceeds_byte_budget() {
         let budget = 4 * 1024;
@@ -510,7 +512,6 @@ mod tests {
         };
         let aggregator = SignalAggregator::new(config);
 
-        // Push far more encoded data than the budget allows.
         for i in 0..500 {
             aggregator
                 .add(Signal::Traces(make_trace_request(&format!(
@@ -574,10 +575,10 @@ mod tests {
         assert_eq!(aggregator.dropped_count().await, 1);
     }
 
+    /// The budget fits a handful of signals; pushing many traces must not
+    /// evict the single metrics entry while traces alone can make room.
     #[tokio::test]
     async fn test_eviction_prefers_pushed_signal_type() {
-        // Budget fits a handful of signals; pushing many traces must not
-        // evict the single metrics entry until traces alone cannot make room.
         let config = FlushConfig {
             max_queue_entries: 5,
             ..Default::default()

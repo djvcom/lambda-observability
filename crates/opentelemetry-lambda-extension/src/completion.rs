@@ -137,6 +137,10 @@ impl CompletionTracker {
     /// remembered so a subsequent [`begin`](Self::begin) for it starts
     /// already complete. Duplicate signals are idempotent; the first source
     /// wins.
+    ///
+    /// The signal is recorded with [`watch::Sender::send_replace`], which
+    /// updates the value even when no waiter is subscribed yet — unlike
+    /// `send`, which fails without receivers.
     pub fn complete(&self, request_id: Option<&str>, source: CompletionSource) {
         let mut state = self.state.lock().expect("completion tracker poisoned");
         let now = Instant::now();
@@ -155,8 +159,6 @@ impl CompletionTracker {
             }
             let timely = now < current.hold_deadline;
             let request_id = current.request_id.clone();
-            // send_replace updates the value even when no waiter is
-            // subscribed yet, unlike send which fails without receivers.
             current.tx.send_replace(Some(source));
             if timely {
                 state.consecutive_hold_timeouts = 0;
@@ -197,7 +199,9 @@ impl CompletionTracker {
     ///
     /// Returns immediately if the invocation is already complete or no
     /// invocation is being tracked. A deadline expiry is recorded against
-    /// signal health (see [`should_hold`](Self::should_hold)).
+    /// signal health (see [`should_hold`](Self::should_hold)), except when
+    /// the current invocation was replaced mid-wait, which is treated as an
+    /// expiry without penalising signal health.
     pub async fn wait_for_completion(&self) -> CompletionOutcome {
         let (mut rx, deadline) = {
             let state = self.state.lock().expect("completion tracker poisoned");
@@ -218,11 +222,7 @@ impl CompletionTracker {
                 state.consecutive_hold_timeouts = 0;
                 CompletionOutcome::Completed(source)
             }
-            Ok(Err(_closed)) => {
-                // The current invocation was replaced mid-wait; treat as
-                // expired without penalising signal health.
-                CompletionOutcome::DeadlineExpired
-            }
+            Ok(Err(_closed)) => CompletionOutcome::DeadlineExpired,
             Err(_elapsed) => {
                 let mut state = self.state.lock().expect("completion tracker poisoned");
                 state.consecutive_hold_timeouts += 1;
@@ -350,6 +350,8 @@ mod tests {
         );
     }
 
+    /// A signal within the next invocation's window restores health, even
+    /// though the handler was not holding at the time.
     #[tokio::test]
     async fn timely_signal_restores_holding() {
         let tracker = CompletionTracker::new();
@@ -361,13 +363,13 @@ mod tests {
         );
         assert!(!tracker.should_hold());
 
-        // A signal within the next invocation's window restores health,
-        // even though the handler was not holding at the time.
         tracker.begin("req-7", deadline_in(Duration::from_secs(5)));
         tracker.complete(Some("req-7"), CompletionSource::RuntimeDone);
         assert!(tracker.should_hold());
     }
 
+    /// A signal that arrives after its invocation's window has already
+    /// expired must not be treated as evidence of a healthy signal source.
     #[tokio::test]
     async fn late_signal_does_not_restore_holding() {
         let tracker = CompletionTracker::new();
@@ -378,7 +380,6 @@ mod tests {
             CompletionOutcome::DeadlineExpired
         );
 
-        // The signal arrives after req-8's window has already expired.
         tracker.complete(Some("req-8"), CompletionSource::RuntimeDone);
         assert!(
             !tracker.should_hold(),

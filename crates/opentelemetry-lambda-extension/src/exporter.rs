@@ -18,6 +18,11 @@ const INITIAL_BACKOFF: Duration = Duration::from_millis(50);
 /// retries not scheduled) when less than this remains before the deadline.
 const MIN_ATTEMPT_BUDGET: Duration = Duration::from_millis(100);
 
+/// Largest batch the stdout fallback will serialise in full. JSON-encoding a
+/// large batch multiplies its memory footprint and floods CloudWatch Logs, so
+/// beyond this size only a summary record is emitted.
+const FALLBACK_MAX_BYTES: usize = 256 * 1024;
+
 /// Result of an export operation.
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -273,11 +278,6 @@ impl OtlpExporter {
     fn emit_to_stdout(&self, batch: &BatchedSignal) {
         use std::io::Write as _;
 
-        // JSON-encoding a large batch multiplies its memory footprint and
-        // floods CloudWatch Logs, so beyond this size only a summary record
-        // is emitted.
-        const FALLBACK_MAX_BYTES: usize = 256 * 1024;
-
         let size_bytes = batch.size_bytes();
         if size_bytes > FALLBACK_MAX_BYTES {
             tracing::warn!(
@@ -456,11 +456,11 @@ mod tests {
         assert!(format!("{}", err).contains("encode"));
     }
 
+    /// Points at the discard port, where connections are refused: the
+    /// budget check must abandon the export before any attempt is made.
     #[tokio::test]
     async fn test_expired_deadline_abandons_export_quickly() {
         let config = ExporterConfig {
-            // Discard port: connections are refused, but the budget check
-            // must abandon the export before any attempt is even made.
             endpoint: Some("http://127.0.0.1:9".to_string()),
             ..Default::default()
         };

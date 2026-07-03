@@ -74,6 +74,24 @@ async fn register_extension(
     Ok(extension_id)
 }
 
+/// Signals extension readiness by re-polling `/next` in the background.
+///
+/// A `/next` poll made after the INVOKE has been delivered tells the
+/// simulator the extension has finished its post-invocation work. The poll
+/// long-polls for the next event, so it runs as a background task.
+fn spawn_ready_repoll(client: &Client, base_url: &str, extension_id: &str) {
+    let client = client.clone();
+    let url = format!("{}/2020-01-01/extension/event/next", base_url);
+    let extension_id = extension_id.to_string();
+    tokio::spawn(async move {
+        let _ = client
+            .get(url)
+            .header("Lambda-Extension-Identifier", extension_id)
+            .send()
+            .await;
+    });
+}
+
 /// Helper to wait for events with a predicate, with timeout.
 async fn wait_for_events<F>(
     events: &Arc<Mutex<Vec<TelemetryEvent>>>,
@@ -1941,18 +1959,7 @@ async fn test_duration_includes_extension_overhead() {
         .await
         .unwrap();
 
-    // Re-polling /next after receiving the INVOKE signals readiness; the
-    // re-poll long-polls for the next event, so it runs in the background.
-    let repoll_client = client.clone();
-    let repoll_url = format!("{}/2020-01-01/extension/event/next", base_url);
-    let repoll_ext_id = extension_id.clone();
-    tokio::spawn(async move {
-        let _ = repoll_client
-            .get(repoll_url)
-            .header("Lambda-Extension-Identifier", repoll_ext_id)
-            .send()
-            .await;
-    });
+    spawn_ready_repoll(&client, &base_url, &extension_id);
 
     tokio::time::sleep(Duration::from_millis(200)).await;
 
@@ -2020,6 +2027,10 @@ fn trigger_platform_start(client: &Client, base_url: &str) -> tokio::task::JoinH
     })
 }
 
+/// A suppressed event type must never reach the subscriber while other
+/// platform events (such as `platform.initRuntimeDone` on the first `/next`)
+/// still arrive, proving delivery itself works. The suppressed event remains
+/// available to test assertions via the internal capture buffer.
 #[tokio::test]
 async fn test_delivery_policy_suppress_blocks_delivery_but_captures() {
     use lambda_simulator::DeliveryPolicy;
@@ -2045,8 +2056,6 @@ async fn test_delivery_policy_suppress_blocks_delivery_but_captures() {
     simulator.enqueue(invocation).await;
     let next_handle = trigger_platform_start(&client, &base_url);
 
-    // Non-suppressed platform events (initRuntimeDone on first /next) must
-    // still be delivered, proving delivery itself works.
     let has_init_runtime_done = wait_for_events(
         &events,
         &notify,
@@ -2062,7 +2071,6 @@ async fn test_delivery_policy_suppress_blocks_delivery_but_captures() {
         "Non-suppressed events should still be delivered"
     );
 
-    // The suppressed event type must never arrive at the subscriber.
     let received_start = wait_for_events(
         &events,
         &notify,
@@ -2075,7 +2083,6 @@ async fn test_delivery_policy_suppress_blocks_delivery_but_captures() {
         "Suppressed platform.start should not be delivered"
     );
 
-    // But it is still captured for test assertions.
     let captured = simulator
         .get_telemetry_events_by_type("platform.start")
         .await;
@@ -2089,6 +2096,9 @@ async fn test_delivery_policy_suppress_blocks_delivery_but_captures() {
     simulator.shutdown().await;
 }
 
+/// A delayed event type (400ms here) must not be delivered when checked
+/// well before the delay elapses, and must arrive once the delay plus the
+/// subscription's buffering interval has passed.
 #[tokio::test]
 async fn test_delivery_policy_delay_defers_delivery() {
     use lambda_simulator::DeliveryPolicy;
@@ -2117,7 +2127,6 @@ async fn test_delivery_policy_delay_defers_delivery() {
     simulator.enqueue(invocation).await;
     let next_handle = trigger_platform_start(&client, &base_url);
 
-    // Not delivered before the delay elapses (delay 400ms, check at 150ms).
     let received_early = wait_for_events(
         &events,
         &notify,
@@ -2130,7 +2139,6 @@ async fn test_delivery_policy_delay_defers_delivery() {
         "Delayed platform.start should not be delivered before the delay"
     );
 
-    // Delivered once the delay (plus buffering interval) has elapsed.
     let received_late = wait_for_events(
         &events,
         &notify,
