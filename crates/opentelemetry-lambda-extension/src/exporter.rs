@@ -273,6 +273,30 @@ impl OtlpExporter {
     fn emit_to_stdout(&self, batch: &BatchedSignal) {
         use std::io::Write as _;
 
+        // JSON-encoding a large batch multiplies its memory footprint and
+        // floods CloudWatch Logs, so beyond this size only a summary record
+        // is emitted.
+        const FALLBACK_MAX_BYTES: usize = 256 * 1024;
+
+        let size_bytes = batch.size_bytes();
+        if size_bytes > FALLBACK_MAX_BYTES {
+            tracing::warn!(
+                size_bytes,
+                signal_type = batch.signal_type(),
+                "Batch too large for stdout fallback, emitting summary only"
+            );
+            let summary = serde_json::json!({
+                "otlp_fallback": {
+                    "type": batch.signal_type(),
+                    "truncated": true,
+                    "encoded_bytes": size_bytes,
+                }
+            });
+            let mut stdout = std::io::stdout().lock();
+            let _ = writeln!(stdout, "{}", summary);
+            return;
+        }
+
         let fallback = match batch {
             BatchedSignal::Traces(req) => OtlpFallback {
                 otlp_fallback: OtlpFallbackData {

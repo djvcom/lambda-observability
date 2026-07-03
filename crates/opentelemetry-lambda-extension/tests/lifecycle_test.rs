@@ -78,7 +78,10 @@ async fn spawn_extension(simulator: &Simulator, collector_endpoint: &str) -> Man
         .env("LAMBDA_OTEL_EXPORTER_COMPRESSION", "none")
         .env("LAMBDA_OTEL_FLUSH_STRATEGY", "end")
         .env("LAMBDA_OTEL_RECEIVER_HTTP_PORT", RECEIVER_PORT.to_string())
-        .env("RUST_LOG", "info")
+        .env(
+            "RUST_LOG",
+            std::env::var("LIFECYCLE_TEST_LOG").unwrap_or_else(|_| "info".to_string()),
+        )
         .inherit_stdio(true);
 
     let extension = simulator

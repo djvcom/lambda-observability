@@ -224,6 +224,17 @@ pub struct FlushConfig {
     pub max_batch_entries: usize,
     /// How long to hold `/next` waiting for invocation completion.
     pub completion_wait: CompletionWait,
+    /// Maximum bytes of encoded telemetry buffered across all signal
+    /// queues. When the budget is exceeded, the oldest signals are dropped.
+    ///
+    /// This bounds the *encoded* size; the decoded structures on the heap
+    /// are typically two to five times larger, so size this well below the
+    /// function's memory allowance. Defaults to 10% of
+    /// `AWS_LAMBDA_FUNCTION_MEMORY_SIZE` clamped to 4–32 MiB, or 16 MiB
+    /// when the variable is not set.
+    pub max_queue_bytes: usize,
+    /// Maximum number of signals buffered across all signal queues.
+    pub max_queue_entries: usize,
 }
 
 impl Default for FlushConfig {
@@ -234,8 +245,23 @@ impl Default for FlushConfig {
             max_batch_bytes: 4 * 1024 * 1024,
             max_batch_entries: 1000,
             completion_wait: CompletionWait::Auto,
+            max_queue_bytes: default_max_queue_bytes(),
+            max_queue_entries: 4096,
         }
     }
+}
+
+/// Derives the default queue byte budget from the function's memory size.
+fn default_max_queue_bytes() -> usize {
+    const MIN: usize = 4 * 1024 * 1024;
+    const MAX: usize = 32 * 1024 * 1024;
+    const FALLBACK: usize = 16 * 1024 * 1024;
+
+    std::env::var("AWS_LAMBDA_FUNCTION_MEMORY_SIZE")
+        .ok()
+        .and_then(|mb| mb.parse::<usize>().ok())
+        .map(|mb| (mb * 1024 * 1024 / 10).clamp(MIN, MAX))
+        .unwrap_or(FALLBACK)
 }
 
 /// Span correlation configuration.
