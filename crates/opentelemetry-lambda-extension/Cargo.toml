@@ -35,13 +35,13 @@ opentelemetry-proto.workspace = true
 axum = { workspace = true, features = ["tokio"] }
 tower = { version = "0.5.3", features = ["timeout"] }
 bytes = "1.11.1"
-prost = "0.14.3"
+prost = "0.14.4"
 chrono = { workspace = true, features = ["serde"] }
 flate2 = "1.1.9"
 hex = "0.4.3"
 lambda-extension = "1.0.4"
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
-opentelemetry-semantic-conventions = { version = "0.31", features = ["semconv_experimental"] }
+opentelemetry-semantic-conventions = { version = "0.32", features = ["semconv_experimental"] }
 anyhow = "1.0.102"
 rand = "0.10.1"
 
@@ -49,10 +49,10 @@ rand = "0.10.1"
 lambda-simulator.workspace = true
 opentelemetry-lambda-example.workspace = true
 lambda_runtime.workspace = true
-mock-collector = "0.2.11"
+mock-collector = "0.2.12"
 temp-env.workspace = true
 tempfile = "3.27.0"
-serial_test = "3.4.0"
+serial_test = "3.5.0"
 criterion = "0.8.2"
 proptest = "1.11.0"
 
