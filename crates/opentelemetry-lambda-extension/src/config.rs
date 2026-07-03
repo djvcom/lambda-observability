@@ -118,7 +118,7 @@ impl Config {
         }
 
         figment = figment.merge(standard_otel_env());
-        figment = figment.merge(Env::prefixed(ENV_PREFIX).split("_"));
+        figment = figment.merge(prefixed_env());
 
         figment.extract()
     }
@@ -387,6 +387,39 @@ fn is_partial_exporter_empty(config: &PartialExporterConfig) -> bool {
         && config.headers.is_empty()
 }
 
+/// Top-level config sections, used to map environment variable names onto
+/// nested config paths.
+const CONFIG_SECTIONS: &[&str] = &[
+    "telemetry_api",
+    "exporter",
+    "receiver",
+    "flush",
+    "correlation",
+];
+
+/// Builds the `LAMBDA_OTEL_`-prefixed environment provider.
+///
+/// A plain `split("_")` cannot address fields whose names contain
+/// underscores (`LAMBDA_OTEL_RECEIVER_HTTP_PORT` would map to
+/// `receiver.http.port` rather than `receiver.http_port`), so variable names
+/// are mapped onto `section.field` by matching the known section prefixes.
+fn prefixed_env() -> Env {
+    Env::prefixed(ENV_PREFIX)
+        .map(|key| {
+            let lower = key.as_str().to_ascii_lowercase();
+            for section in CONFIG_SECTIONS {
+                if let Some(field) = lower
+                    .strip_prefix(section)
+                    .and_then(|rest| rest.strip_prefix('_'))
+                {
+                    return format!("{section}.{field}").into();
+                }
+            }
+            lower.into()
+        })
+        .split(".")
+}
+
 fn standard_otel_env() -> Serialized<PartialConfig> {
     let mut config = PartialConfig::default();
 
@@ -447,6 +480,7 @@ mod duration_ms {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
     use std::io::Write;
     use tempfile::NamedTempFile;
 
@@ -514,6 +548,7 @@ mod tests {
     }
 
     #[test]
+    #[serial(config_env)]
     fn test_load_from_toml() {
         let toml_content = r#"
 [exporter]
@@ -559,11 +594,36 @@ emit_orphaned_spans = false
     }
 
     #[test]
+    #[serial(config_env)]
     fn test_load_nonexistent_file_uses_defaults() {
         let config = Config::load_from_path("/nonexistent/path/config.toml").unwrap();
 
         assert!(config.exporter.endpoint.is_none());
         assert_eq!(config.receiver.grpc_port, 4317);
+    }
+
+    #[test]
+    #[serial(config_env)]
+    fn test_env_vars_map_to_multi_word_fields() {
+        temp_env::with_vars(
+            [
+                ("LAMBDA_OTEL_RECEIVER_HTTP_PORT", Some("24418")),
+                ("LAMBDA_OTEL_FLUSH_MAX_BATCH_ENTRIES", Some("42")),
+                ("LAMBDA_OTEL_TELEMETRY_API_BUFFER_SIZE", Some("77")),
+                ("LAMBDA_OTEL_EXPORTER_ENDPOINT", Some("http://env:4318")),
+            ],
+            || {
+                let config = Config::load_from_path("/nonexistent/path/config.toml").unwrap();
+
+                assert_eq!(config.receiver.http_port, 24418);
+                assert_eq!(config.flush.max_batch_entries, 42);
+                assert_eq!(config.telemetry_api.buffer_size, 77);
+                assert_eq!(
+                    config.exporter.endpoint,
+                    Some("http://env:4318".to_string())
+                );
+            },
+        );
     }
 
     #[test]
