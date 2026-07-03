@@ -3,17 +3,71 @@ name: Benchmarks
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
 
-permissions:
-  contents: write
-
 jobs:
-  bench:
-    name: Criterion benchmarks
+  publish:
+    name: Publish benchmark results
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run benchmarks
+        run: >
+          cargo bench -p opentelemetry-lambda-extension --
+          --output-format bencher | tee bench-output.txt
+
+      - name: Restore baseline
+        uses: actions/cache/restore@v4
+        with:
+          path: bench-baseline
+          key: bench-baseline-${{ github.sha }}
+          restore-keys: bench-baseline-
+
+      - name: Update baseline for PR comparisons
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          name: opentelemetry-lambda-extension
+          tool: cargo
+          output-file-path: bench-output.txt
+          external-data-json-path: bench-baseline/benchmark-data.json
+
+      - name: Save baseline
+        uses: actions/cache/save@v4
+        with:
+          path: bench-baseline
+          key: bench-baseline-${{ github.sha }}
+
+      - name: Publish results to gh-pages
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          name: opentelemetry-lambda-extension
+          tool: cargo
+          output-file-path: bench-output.txt
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          auto-push: true
+          benchmark-data-dir-path: dev/bench
+          alert-threshold: "150%"
+          comment-on-alert: true
+          fail-on-alert: false
+
+  regression-check:
+    name: Benchmark regression check
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -29,15 +83,21 @@ jobs:
           cargo bench -p opentelemetry-lambda-extension --
           --output-format bencher | tee bench-output.txt
 
-      - name: Publish results to gh-pages
+      - name: Restore baseline from main
+        uses: actions/cache/restore@v4
+        with:
+          path: bench-baseline
+          key: bench-baseline-${{ github.sha }}
+          restore-keys: bench-baseline-
+
+      - name: Compare against baseline
         uses: benchmark-action/github-action-benchmark@v1
         with:
           name: opentelemetry-lambda-extension
           tool: cargo
           output-file-path: bench-output.txt
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          auto-push: true
-          benchmark-data-dir-path: dev/bench
+          external-data-json-path: bench-baseline/benchmark-data.json
+          save-data-file: false
           alert-threshold: "150%"
-          comment-on-alert: true
-          fail-on-alert: false
+          fail-on-alert: true
+          summary-always: true

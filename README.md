@@ -192,8 +192,10 @@ cargo bench -p opentelemetry-lambda-extension
 
 Benchmark results for every commit on `main` are published to
 [GitHub Pages](https://djvcom.github.io/lambda-observability/dev/bench/),
-charting each benchmark over time with commits on the x-axis. Pushes that
-regress a benchmark by more than 50% raise an alert comment on the commit.
+charting each benchmark over time with commits on the x-axis. Pull
+requests run the same benchmarks against the latest `main` baseline and
+the check fails when a benchmark regresses beyond 150% of the baseline;
+shared runners are noisy, so the threshold is deliberately generous.
 
 ## Minimum Supported Rust Version
 
