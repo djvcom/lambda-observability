@@ -184,6 +184,31 @@ impl Default for ReceiverConfig {
     }
 }
 
+/// How long to hold the `/next` poll waiting for invocation completion
+/// signals before flushing in the post-invocation window.
+///
+/// Holding `/next` keeps the execution environment thawed so exports cannot
+/// be interrupted by a freeze. The hold releases as soon as a completion
+/// signal arrives (a wrapper's `POST /invocation/complete` or the
+/// `platform.runtimeDone` event), so its cost is normally a few
+/// milliseconds of billed duration after the response has been sent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum CompletionWait {
+    /// Hold until a completion signal arrives, bounded by the invocation
+    /// deadline. Holding is disabled automatically after a hold times out
+    /// and re-enabled when signals are next observed.
+    #[default]
+    Auto,
+    /// Never hold `/next`; flush opportunistically at the next INVOKE
+    /// instead. Telemetry may be delayed by one invocation and the final
+    /// export before a freeze is not guaranteed.
+    Off,
+    /// As `auto`, but cap the hold at the given duration in milliseconds.
+    #[serde(untagged)]
+    Cap(#[serde(with = "duration_ms")] Duration),
+}
+
 /// Flush behaviour configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -197,6 +222,8 @@ pub struct FlushConfig {
     pub max_batch_bytes: usize,
     /// Maximum entries per batch.
     pub max_batch_entries: usize,
+    /// How long to hold `/next` waiting for invocation completion.
+    pub completion_wait: CompletionWait,
 }
 
 impl Default for FlushConfig {
@@ -206,6 +233,7 @@ impl Default for FlushConfig {
             interval: Duration::from_secs(20),
             max_batch_bytes: 4 * 1024 * 1024,
             max_batch_entries: 1000,
+            completion_wait: CompletionWait::Auto,
         }
     }
 }

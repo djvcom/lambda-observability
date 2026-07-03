@@ -96,6 +96,7 @@ impl ExtensionRuntime {
         let receiver = OtlpReceiver::new(
             self.config.receiver.clone(),
             signal_tx,
+            Arc::clone(&state.completion),
             self.cancel_token.child_token(),
         );
 

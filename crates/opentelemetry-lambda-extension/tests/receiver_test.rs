@@ -23,7 +23,12 @@ async fn test_receiver_accepts_protobuf_traces() {
         grpc_port: 14317,
     };
 
-    let receiver = OtlpReceiver::new(config, signal_tx, cancel_token.clone());
+    let receiver = OtlpReceiver::new(
+        config,
+        signal_tx,
+        std::sync::Arc::new(opentelemetry_lambda_extension::CompletionTracker::new()),
+        cancel_token.clone(),
+    );
     let (_handle, future) = receiver.start().await.expect("Failed to start receiver");
     let server_task = tokio::spawn(future);
 
@@ -89,7 +94,12 @@ async fn test_receiver_accepts_json_traces() {
         grpc_port: 14317,
     };
 
-    let receiver = OtlpReceiver::new(config, signal_tx, cancel_token.clone());
+    let receiver = OtlpReceiver::new(
+        config,
+        signal_tx,
+        std::sync::Arc::new(opentelemetry_lambda_extension::CompletionTracker::new()),
+        cancel_token.clone(),
+    );
     let (_handle, future) = receiver.start().await.expect("Failed to start receiver");
     let server_task = tokio::spawn(future);
 
@@ -142,7 +152,12 @@ async fn test_receiver_backpressure() {
         grpc_port: 14317,
     };
 
-    let receiver = OtlpReceiver::new(config, signal_tx, cancel_token.clone());
+    let receiver = OtlpReceiver::new(
+        config,
+        signal_tx,
+        std::sync::Arc::new(opentelemetry_lambda_extension::CompletionTracker::new()),
+        cancel_token.clone(),
+    );
     let (_handle, future) = receiver.start().await.expect("Failed to start receiver");
     let server_task = tokio::spawn(future);
 
@@ -188,7 +203,12 @@ async fn test_receiver_invalid_protobuf() {
         grpc_port: 14317,
     };
 
-    let receiver = OtlpReceiver::new(config, signal_tx, cancel_token.clone());
+    let receiver = OtlpReceiver::new(
+        config,
+        signal_tx,
+        std::sync::Arc::new(opentelemetry_lambda_extension::CompletionTracker::new()),
+        cancel_token.clone(),
+    );
     let (_handle, future) = receiver.start().await.expect("Failed to start receiver");
     let server_task = tokio::spawn(future);
 
@@ -223,7 +243,12 @@ async fn test_receiver_handles_metrics() {
         grpc_port: 14317,
     };
 
-    let receiver = OtlpReceiver::new(config, signal_tx, cancel_token.clone());
+    let receiver = OtlpReceiver::new(
+        config,
+        signal_tx,
+        std::sync::Arc::new(opentelemetry_lambda_extension::CompletionTracker::new()),
+        cancel_token.clone(),
+    );
     let (_handle, future) = receiver.start().await.expect("Failed to start receiver");
     let server_task = tokio::spawn(future);
 
@@ -267,7 +292,12 @@ async fn test_receiver_handles_logs() {
         grpc_port: 14317,
     };
 
-    let receiver = OtlpReceiver::new(config, signal_tx, cancel_token.clone());
+    let receiver = OtlpReceiver::new(
+        config,
+        signal_tx,
+        std::sync::Arc::new(opentelemetry_lambda_extension::CompletionTracker::new()),
+        cancel_token.clone(),
+    );
     let (_handle, future) = receiver.start().await.expect("Failed to start receiver");
     let server_task = tokio::spawn(future);
 

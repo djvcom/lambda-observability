@@ -222,6 +222,33 @@ where
     request_id
 }
 
+/// Waits for the `platform.report` event of the given invocation and
+/// returns its `durationMs` metric. With an instant test handler this is
+/// dominated by how long the extension held `/next` after the response.
+async fn report_duration_ms(simulator: &Simulator, request_id: &str) -> f64 {
+    simulator
+        .wait_for(
+            || async {
+                simulator
+                    .get_telemetry_events_by_type("platform.report")
+                    .await
+                    .iter()
+                    .any(|e| e.record["requestId"].as_str() == Some(request_id))
+            },
+            Duration::from_secs(20),
+        )
+        .await
+        .expect("platform.report not emitted");
+
+    simulator
+        .get_telemetry_events_by_type("platform.report")
+        .await
+        .iter()
+        .find(|e| e.record["requestId"].as_str() == Some(request_id))
+        .and_then(|e| e.record["metrics"]["durationMs"].as_f64())
+        .expect("report should carry durationMs")
+}
+
 async fn span_count(collector: &mock_collector::ServerHandle) -> usize {
     collector.with_collector(|c| c.span_count()).await
 }
@@ -420,44 +447,29 @@ async fn suppressed_runtime_done_disables_holding_after_first_timeout() {
     simulator
         .set_telemetry_delivery_policy("platform.runtimeDone", DeliveryPolicy::Suppress)
         .await;
+    simulator.enable_telemetry_capture().await;
 
     let _extension = spawn_extension(&simulator, &collector_endpoint).await;
     let client = reqwest::Client::new();
 
+    // The test handler responds instantly, so the report duration is
+    // dominated by how long the extension held /next afterwards.
     let request_id_1 = run_invocation(&simulator, &client, |_| async {}).await;
-
-    simulator
-        .wait_for_extensions_ready(&request_id_1, Duration::from_secs(6))
-        .await
-        .expect("Extension should release /next via the deadline fallback");
-
-    let overhead_1 = simulator
-        .get_extension_overhead_ms(&request_id_1)
-        .await
-        .expect("First invocation should have extension overhead recorded");
+    let duration_1 = report_duration_ms(&simulator, &request_id_1).await;
     assert!(
-        overhead_1 >= 1_000.0,
+        duration_1 >= 1_000.0,
         "First invocation should pay a bounded deadline hold while waiting \
          for completion signals that never arrive (observed {}ms)",
-        overhead_1
+        duration_1
     );
 
     let request_id_2 = run_invocation(&simulator, &client, |_| async {}).await;
-
-    simulator
-        .wait_for_extensions_ready(&request_id_2, Duration::from_secs(6))
-        .await
-        .expect("Extension should be ready promptly on the second invocation");
-
-    let overhead_2 = simulator
-        .get_extension_overhead_ms(&request_id_2)
-        .await
-        .expect("Second invocation should have extension overhead recorded");
+    let duration_2 = report_duration_ms(&simulator, &request_id_2).await;
     assert!(
-        overhead_2 < 500.0,
+        duration_2 < 500.0,
         "After the first deadline timeout, holding must be disabled so \
          subsequent invocations pay no hold cost (observed {}ms)",
-        overhead_2
+        duration_2
     );
 
     simulator

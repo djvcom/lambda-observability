@@ -12,7 +12,8 @@
 //! shutdown completes.
 
 use crate::aggregator::SignalAggregator;
-use crate::config::Config;
+use crate::completion::{CompletionOutcome, CompletionSource, CompletionTracker};
+use crate::config::{CompletionWait, Config, FlushStrategy};
 use crate::conversion::{MetricsConverter, TelemetryProcessor};
 use crate::exporter::OtlpExporter;
 use crate::flush::FlushManager;
@@ -23,9 +24,47 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tokio::sync::{Mutex, RwLock, oneshot};
 use tower::Service;
+
+/// Safety margin subtracted from the invocation deadline when holding
+/// `/next`, leaving room for the flush itself before the function times out.
+const HOLD_DEADLINE_MARGIN: Duration = Duration::from_secs(1);
+
+/// Grace period after a completion signal for signals already accepted by
+/// the receiver to reach the aggregator before the post-invoke flush reads it.
+const COMPLETION_SETTLE_DELAY: Duration = Duration::from_millis(20);
+
+/// Computes the instant until which `/next` may be held for the invocation
+/// with the given epoch-millisecond deadline.
+///
+/// Returns `None` when holding is disabled by configuration or there is no
+/// usable window before the deadline.
+fn hold_deadline(deadline_ms: u64, completion_wait: CompletionWait) -> Option<Instant> {
+    let cap = match completion_wait {
+        CompletionWait::Off => return None,
+        CompletionWait::Auto => None,
+        CompletionWait::Cap(cap) => Some(cap),
+    };
+
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64;
+
+    let remaining = Duration::from_millis(deadline_ms.saturating_sub(now_ms))
+        .saturating_sub(HOLD_DEADLINE_MARGIN);
+    if remaining.is_zero() {
+        return None;
+    }
+
+    let hold = match cap {
+        Some(cap) => remaining.min(cap),
+        None => remaining,
+    };
+    Some(Instant::now() + hold)
+}
 
 /// Shared state for extension services.
 ///
@@ -37,7 +76,7 @@ pub struct ExtensionState {
     pub(crate) flush_manager: Arc<Mutex<FlushManager>>,
     pub(crate) telemetry_processor: Arc<Mutex<TelemetryProcessor>>,
     pub(crate) metrics_converter: MetricsConverter,
-    #[allow(dead_code)]
+    pub(crate) completion: Arc<CompletionTracker>,
     pub(crate) config: Config,
     /// Lock to coordinate shutdown with telemetry processing.
     ///
@@ -70,6 +109,7 @@ impl ExtensionState {
             flush_manager: Arc::new(Mutex::new(FlushManager::new(config.flush.clone()))),
             telemetry_processor: Arc::new(Mutex::new(TelemetryProcessor::new(resource.clone()))),
             metrics_converter: MetricsConverter::new(resource),
+            completion: Arc::new(CompletionTracker::new()),
             config,
             processing_lock: RwLock::new(()),
             shutdown_tx: Mutex::new(Some(shutdown_tx)),
@@ -104,6 +144,97 @@ impl ExtensionState {
                     flush_manager.record_flush_timeout();
                 }
             }
+        }
+    }
+
+    /// Holds the invocation open until a completion signal arrives or the
+    /// hold deadline expires, then performs the post-invocation flush.
+    ///
+    /// This runs inside the INVOKE event handler, which delays the next
+    /// `/next` poll and therefore keeps the execution environment thawed:
+    /// Lambda only freezes once the runtime has responded and every
+    /// extension is parked on `/next`. Everything exported here is
+    /// guaranteed not to be interrupted by a freeze.
+    ///
+    /// While holding, periodic flush strategies still fire so long-running
+    /// invocations export incrementally rather than accumulating everything
+    /// until the end.
+    pub async fn hold_and_flush(&self) {
+        loop {
+            let periodic_tick = self.time_until_periodic_flush().await;
+
+            tokio::select! {
+                outcome = self.completion.wait_for_completion() => {
+                    match outcome {
+                        CompletionOutcome::Completed(source) => {
+                            tracing::debug!(?source, "Invocation complete, entering post-invoke flush window");
+                            // Give signals accepted by the receiver just before
+                            // completion a moment to travel through the channel
+                            // into the aggregator.
+                            tokio::time::sleep(COMPLETION_SETTLE_DELAY).await;
+                        }
+                        CompletionOutcome::DeadlineExpired => {
+                            tracing::warn!(
+                                "Hold deadline expired without completion signal; flushing and releasing /next"
+                            );
+                        }
+                    }
+                    break;
+                }
+                _ = tokio::time::sleep(periodic_tick.unwrap_or(Duration::MAX)), if periodic_tick.is_some() => {
+                    let pending = self.aggregator.pending_count().await;
+                    let should_flush = {
+                        let flush_manager = self.flush_manager.lock().await;
+                        flush_manager.should_flush(None, pending, false).is_some()
+                    };
+                    if should_flush {
+                        tracing::debug!(pending, "Periodic flush during held invocation");
+                        self.flush_all().await;
+                    }
+                }
+            }
+        }
+
+        self.post_invoke_flush().await;
+    }
+
+    /// Returns the time until the next periodic flush is due, or `None`
+    /// when the effective strategy never flushes mid-invocation.
+    async fn time_until_periodic_flush(&self) -> Option<Duration> {
+        let flush_manager = self.flush_manager.lock().await;
+        match self.config.flush.strategy {
+            FlushStrategy::Periodic | FlushStrategy::Continuous => {
+                // Never zero: a due flush is picked up on the tick arm, and
+                // the loop must always prefer the completion arm first.
+                Some(
+                    flush_manager
+                        .time_until_next_flush()
+                        .max(Duration::from_millis(10)),
+                )
+            }
+            FlushStrategy::Default | FlushStrategy::End => None,
+        }
+    }
+
+    /// Flushes pending signals in the post-invocation window when the flush
+    /// strategy calls for it.
+    pub async fn post_invoke_flush(&self) {
+        let pending = self.aggregator.pending_count().await;
+        if pending == 0 {
+            return;
+        }
+
+        let should_flush = {
+            let flush_manager = self.flush_manager.lock().await;
+            flush_manager
+                .should_flush_on_invocation_end(pending)
+                .is_some()
+                || flush_manager.should_flush(None, pending, false).is_some()
+        };
+
+        if should_flush {
+            tracing::debug!(pending, "Flushing in post-invocation window");
+            self.flush_all().await;
         }
     }
 
@@ -185,18 +316,29 @@ impl Service<LambdaEvent> for EventsService {
                         flush_manager.record_invocation();
                     }
 
-                    // Check if we should flush based on pending count
-                    let pending = state.aggregator.pending_count().await;
-                    let should_flush = {
-                        let flush_manager = state.flush_manager.lock().await;
-                        flush_manager
-                            .should_flush(Some(invoke.deadline_ms as i64), pending, false)
-                            .is_some()
-                    };
+                    let deadline =
+                        hold_deadline(invoke.deadline_ms, state.config.flush.completion_wait);
 
-                    if should_flush {
-                        tracing::debug!(pending, "Flushing during invocation");
-                        state.flush_all().await;
+                    // The hold deadline is registered even when holding is
+                    // skipped so later signals are judged against the window
+                    // they should have arrived in when updating signal health.
+                    state.completion.begin(
+                        invoke.request_id.clone(),
+                        deadline.unwrap_or_else(Instant::now),
+                    );
+
+                    match deadline {
+                        Some(_) if state.completion.should_hold() => {
+                            // Hold /next until completion, then flush in the
+                            // guaranteed post-invocation window.
+                            state.hold_and_flush().await;
+                        }
+                        _ => {
+                            // Not holding: flush any backlog from previous
+                            // invocations now, while the environment is
+                            // known to be thawed.
+                            state.post_invoke_flush().await;
+                        }
                     }
                 }
                 NextEvent::Shutdown(shutdown) => {
@@ -263,10 +405,17 @@ impl Service<Vec<LambdaTelemetry>> for TelemetryService {
 
             tracing::debug!(count = events.len(), "Processing telemetry events");
 
-            // Check if any event is a RuntimeDone (signals end of invocation)
-            let has_runtime_done = events
+            // Collect RuntimeDone request IDs to signal invocation completion
+            // once the events have been processed into the aggregator.
+            let runtime_done_ids: Vec<String> = events
                 .iter()
-                .any(|e| matches!(e.record, LambdaTelemetryRecord::PlatformRuntimeDone { .. }));
+                .filter_map(|e| match &e.record {
+                    LambdaTelemetryRecord::PlatformRuntimeDone { request_id, .. } => {
+                        Some(request_id.clone())
+                    }
+                    _ => None,
+                })
+                .collect();
 
             // Convert lambda_extension telemetry events to our internal format
             let internal_events = convert_telemetry_events(events);
@@ -289,21 +438,15 @@ impl Service<Vec<LambdaTelemetry>> for TelemetryService {
                     .await;
             }
 
-            // If we received RuntimeDone, this is the post-invoke phase.
-            // Check if we should flush based on the strategy (e.g., FlushStrategy::End).
-            if has_runtime_done {
-                let pending = state.aggregator.pending_count().await;
-                let should_flush = {
-                    let flush_manager = state.flush_manager.lock().await;
-                    flush_manager
-                        .should_flush_on_invocation_end(pending)
-                        .is_some()
-                };
-
-                if should_flush {
-                    tracing::debug!(pending, "Flushing at end of invocation (post-invoke phase)");
-                    state.flush_all().await;
-                }
+            // Signal completion after the events (and their derived metrics)
+            // are in the aggregator, so the post-invoke flush picks them up.
+            // The flush itself is owned by the INVOKE handler's hold loop,
+            // which runs before the extension re-polls /next and therefore
+            // cannot be interrupted by a freeze — flushing here could be.
+            for request_id in runtime_done_ids {
+                state
+                    .completion
+                    .complete(Some(&request_id), CompletionSource::RuntimeDone);
             }
 
             Ok(())

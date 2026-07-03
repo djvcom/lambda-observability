@@ -22,6 +22,7 @@
 #![warn(missing_docs)]
 
 pub mod aggregator;
+pub mod completion;
 pub mod config;
 pub mod context;
 pub mod conversion;
@@ -36,9 +37,10 @@ pub mod telemetry;
 pub mod tracing;
 
 pub use aggregator::{BatchedSignal, SignalAggregator};
+pub use completion::{CompletionOutcome, CompletionSource, CompletionTracker};
 pub use config::{
-    Compression, Config, CorrelationConfig, ExporterConfig, FlushConfig, FlushStrategy, Protocol,
-    ReceiverConfig, TelemetryApiConfig,
+    CompletionWait, Compression, Config, CorrelationConfig, ExporterConfig, FlushConfig,
+    FlushStrategy, Protocol, ReceiverConfig, TelemetryApiConfig,
 };
 pub use context::{
     InvocationContextManager, PlatformEvent, PlatformEventType, RequestId, SpanContext,

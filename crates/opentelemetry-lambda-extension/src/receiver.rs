@@ -3,6 +3,7 @@
 //! This module provides HTTP endpoints that receive OTLP signals (traces, metrics, logs)
 //! from the Lambda function. It supports both protobuf and JSON content types.
 
+use crate::completion::{CompletionSource, CompletionTracker};
 use crate::config::ReceiverConfig;
 use axum::{
     Json, Router,
@@ -119,6 +120,7 @@ pub enum FlushError {
 pub struct OtlpReceiver {
     config: ReceiverConfig,
     signal_tx: mpsc::Sender<Signal>,
+    completion: Arc<CompletionTracker>,
     cancel_token: CancellationToken,
 }
 
@@ -129,15 +131,18 @@ impl OtlpReceiver {
     ///
     /// * `config` - Receiver configuration
     /// * `signal_tx` - Channel for sending received signals to the aggregator
+    /// * `completion` - Tracker notified when a wrapper signals invocation completion
     /// * `cancel_token` - Token for graceful shutdown
     pub fn new(
         config: ReceiverConfig,
         signal_tx: mpsc::Sender<Signal>,
+        completion: Arc<CompletionTracker>,
         cancel_token: CancellationToken,
     ) -> Self {
         Self {
             config,
             signal_tx,
+            completion,
             cancel_token,
         }
     }
@@ -166,7 +171,7 @@ impl OtlpReceiver {
     > {
         if !self.config.http_enabled {
             tracing::info!("HTTP receiver disabled");
-            let state = Arc::new(ReceiverState::new(self.signal_tx));
+            let state = Arc::new(ReceiverState::new(self.signal_tx, self.completion));
             let handle = ReceiverHandle {
                 state,
                 local_addr: SocketAddr::from(([127, 0, 0, 1], 0)),
@@ -182,7 +187,7 @@ impl OtlpReceiver {
         let listener = TcpListener::bind(addr).await?;
         let local_addr = listener.local_addr()?;
 
-        let state = Arc::new(ReceiverState::new(self.signal_tx));
+        let state = Arc::new(ReceiverState::new(self.signal_tx, self.completion));
         let handle = ReceiverHandle {
             state: state.clone(),
             local_addr,
@@ -193,6 +198,7 @@ impl OtlpReceiver {
             .route("/v1/traces", post(handle_traces))
             .route("/v1/metrics", post(handle_metrics))
             .route("/v1/logs", post(handle_logs))
+            .route("/invocation/complete", post(handle_invocation_complete))
             .with_state(state);
 
         tracing::info!(port = local_addr.port(), "OTLP HTTP receiver started");
@@ -219,20 +225,46 @@ pub struct HealthResponse {
 
 struct ReceiverState {
     signal_tx: mpsc::Sender<Signal>,
+    completion: Arc<CompletionTracker>,
     signals_received: AtomicU64,
     flush_requested: Arc<Notify>,
     flush_complete: Arc<Notify>,
 }
 
 impl ReceiverState {
-    fn new(signal_tx: mpsc::Sender<Signal>) -> Self {
+    fn new(signal_tx: mpsc::Sender<Signal>, completion: Arc<CompletionTracker>) -> Self {
         Self {
             signal_tx,
+            completion,
             signals_received: AtomicU64::new(0),
             flush_requested: Arc::new(Notify::new()),
             flush_complete: Arc::new(Notify::new()),
         }
     }
+}
+
+/// Header carrying the request ID on wrapper completion signals.
+const LAMBDA_REQUEST_ID_HEADER: &str = "lambda-request-id";
+
+/// Handles `POST /invocation/complete` from a handler wrapper.
+///
+/// The optional `Lambda-Request-Id` header identifies the invocation; when
+/// absent the current invocation is completed. Always returns `202` so
+/// wrappers never fail the function on signalling problems.
+async fn handle_invocation_complete(
+    State(state): State<Arc<ReceiverState>>,
+    headers: HeaderMap,
+) -> StatusCode {
+    let request_id = headers
+        .get(LAMBDA_REQUEST_ID_HEADER)
+        .and_then(|value| value.to_str().ok());
+
+    tracing::debug!(request_id = ?request_id, "Wrapper signalled invocation completion");
+    state
+        .completion
+        .complete(request_id, CompletionSource::Wrapper);
+
+    StatusCode::ACCEPTED
 }
 
 async fn handle_health(State(state): State<Arc<ReceiverState>>) -> Json<HealthResponse> {

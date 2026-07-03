@@ -32,6 +32,7 @@ fn test_end_strategy_flushes_on_invocation_end() {
         interval: Duration::from_millis(100),
         max_batch_entries: 100,
         max_batch_bytes: 1024,
+        ..Default::default()
     };
 
     let manager = FlushManager::new(config);
@@ -60,6 +61,7 @@ fn test_default_strategy_with_infrequent_pattern_flushes_on_end() {
         interval: Duration::from_millis(100),
         max_batch_entries: 100,
         max_batch_bytes: 1024,
+        ..Default::default()
     };
 
     let manager = FlushManager::new(config);
@@ -91,6 +93,7 @@ fn test_continuous_strategy_periodic_flush() {
         interval: Duration::from_millis(10),
         max_batch_entries: 100,
         max_batch_bytes: 1024,
+        ..Default::default()
     };
 
     let mut manager = FlushManager::new(config);
@@ -131,6 +134,7 @@ fn test_periodic_strategy_flush() {
         interval: Duration::from_millis(10),
         max_batch_entries: 100,
         max_batch_bytes: 1024,
+        ..Default::default()
     };
 
     let mut manager = FlushManager::new(config);
@@ -171,6 +175,7 @@ fn test_no_export_after_next_architecture() {
         interval: Duration::from_millis(100),
         max_batch_entries: 100,
         max_batch_bytes: 1024,
+        ..Default::default()
     };
 
     let manager = FlushManager::new(config);
@@ -204,6 +209,7 @@ fn test_shutdown_always_flushes() {
         interval: Duration::from_secs(60),
         max_batch_entries: 100,
         max_batch_bytes: 1024,
+        ..Default::default()
     };
 
     let manager = FlushManager::new(config);
@@ -237,6 +243,7 @@ fn test_buffer_full_triggers_flush() {
         interval: Duration::from_secs(60),
         max_batch_entries: 10,
         max_batch_bytes: 1024,
+        ..Default::default()
     };
 
     let manager = FlushManager::new(config);
@@ -273,6 +280,7 @@ fn test_deadline_approaching_triggers_flush() {
         interval: Duration::from_secs(60),
         max_batch_entries: 100,
         max_batch_bytes: 1024,
+        ..Default::default()
     };
 
     let manager = FlushManager::new(config);
@@ -366,6 +374,7 @@ fn test_default_strategy_adapts_to_pattern() {
         interval: Duration::from_millis(10),
         max_batch_entries: 100,
         max_batch_bytes: 1024,
+        ..Default::default()
     };
 
     let mut manager = FlushManager::new(config);
@@ -410,6 +419,7 @@ fn test_timeout_escalation_to_continuous() {
         interval: Duration::from_millis(10),
         max_batch_entries: 100,
         max_batch_bytes: 1024,
+        ..Default::default()
     };
 
     let mut manager = FlushManager::new(config);
@@ -475,6 +485,7 @@ fn test_no_inflight_export_during_freeze() {
         interval: Duration::from_secs(60),
         max_batch_entries: 100,
         max_batch_bytes: 1024,
+        ..Default::default()
     };
 
     let manager = FlushManager::new(config);
@@ -739,6 +750,7 @@ fn test_time_until_next_flush() {
         interval: Duration::from_millis(100),
         max_batch_entries: 100,
         max_batch_bytes: 1024,
+        ..Default::default()
     };
 
     let mut manager = FlushManager::new(config);
