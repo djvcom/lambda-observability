@@ -1,0 +1,43 @@
+name: Benchmarks
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+permissions:
+  contents: write
+
+jobs:
+  bench:
+    name: Criterion benchmarks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run benchmarks
+        run: >
+          cargo bench -p opentelemetry-lambda-extension --
+          --output-format bencher | tee bench-output.txt
+
+      - name: Publish results to gh-pages
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          name: opentelemetry-lambda-extension
+          tool: cargo
+          output-file-path: bench-output.txt
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          auto-push: true
+          benchmark-data-dir-path: dev/bench
+          alert-threshold: "150%"
+          comment-on-alert: true
+          fail-on-alert: false

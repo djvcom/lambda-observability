@@ -185,7 +185,15 @@ cargo clippy --workspace -- -D warnings
 
 # Build documentation
 cargo doc --workspace --no-deps --open
+
+# Run benchmarks
+cargo bench -p opentelemetry-lambda-extension
 ```
+
+Benchmark results for every commit on `main` are published to
+[GitHub Pages](https://djvcom.github.io/lambda-observability/dev/bench/),
+charting each benchmark over time with commits on the x-axis. Pushes that
+regress a benchmark by more than 50% raise an alert comment on the commit.
 
 ## Minimum Supported Rust Version
 
