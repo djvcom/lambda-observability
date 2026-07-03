@@ -39,6 +39,31 @@ async fn register_extension(
         .to_string()
 }
 
+/// Polls /next to receive the pending INVOKE, then re-polls in the background.
+///
+/// Readiness is only signalled by a /next poll made *after* the INVOKE has
+/// been delivered, matching real Lambda freeze semantics. The re-poll
+/// long-polls for the next event, so it runs as a background task.
+async fn receive_invoke_and_signal_ready(client: &Client, base_url: &str, extension_id: &str) {
+    client
+        .get(format!("{}/2020-01-01/extension/event/next", base_url))
+        .header("Lambda-Extension-Identifier", extension_id)
+        .send()
+        .await
+        .unwrap();
+
+    let repoll_client = client.clone();
+    let repoll_url = format!("{}/2020-01-01/extension/event/next", base_url);
+    let repoll_ext_id = extension_id.to_string();
+    tokio::spawn(async move {
+        let _ = repoll_client
+            .get(repoll_url)
+            .header("Lambda-Extension-Identifier", repoll_ext_id)
+            .send()
+            .await;
+    });
+}
+
 #[tokio::test]
 async fn test_extension_readiness_with_single_extension() {
     let simulator = Simulator::builder()
@@ -102,12 +127,7 @@ async fn test_extension_readiness_with_single_extension() {
         "platform.report should not be emitted before extensions are ready"
     );
 
-    client
-        .get(format!("{}/2020-01-01/extension/event/next", base_url))
-        .header("Lambda-Extension-Identifier", &extension_id)
-        .send()
-        .await
-        .unwrap();
+    receive_invoke_and_signal_ready(&client, &base_url, &extension_id).await;
 
     simulator
         .wait_for_extensions_ready(&request_id, Duration::from_secs(5))
@@ -180,12 +200,7 @@ async fn test_extension_readiness_with_multiple_extensions() {
         .await
         .unwrap();
 
-    client
-        .get(format!("{}/2020-01-01/extension/event/next", base_url))
-        .header("Lambda-Extension-Identifier", &ext1_id)
-        .send()
-        .await
-        .unwrap();
+    receive_invoke_and_signal_ready(&client, &base_url, &ext1_id).await;
 
     assert!(
         !simulator.are_extensions_ready(&request_id).await,
@@ -200,12 +215,7 @@ async fn test_extension_readiness_with_multiple_extensions() {
         "platform.report should not be emitted with only partial readiness"
     );
 
-    client
-        .get(format!("{}/2020-01-01/extension/event/next", base_url))
-        .header("Lambda-Extension-Identifier", &ext2_id)
-        .send()
-        .await
-        .unwrap();
+    receive_invoke_and_signal_ready(&client, &base_url, &ext2_id).await;
 
     simulator
         .wait_for_extensions_ready(&request_id, Duration::from_secs(5))
@@ -430,12 +440,7 @@ async fn test_wait_for_extensions_ready_helper() {
         "wait_for_extensions_ready should not complete before extension polls"
     );
 
-    client
-        .get(format!("{}/2020-01-01/extension/event/next", base_url))
-        .header("Lambda-Extension-Identifier", &extension_id)
-        .send()
-        .await
-        .unwrap();
+    receive_invoke_and_signal_ready(&client, &base_url, &extension_id).await;
 
     simulator
         .wait_for_extensions_ready(&request_id, Duration::from_secs(5))

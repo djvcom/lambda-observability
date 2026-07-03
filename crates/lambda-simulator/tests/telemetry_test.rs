@@ -74,6 +74,24 @@ async fn register_extension(
     Ok(extension_id)
 }
 
+/// Signals extension readiness by re-polling `/next` in the background.
+///
+/// A `/next` poll made after the INVOKE has been delivered tells the
+/// simulator the extension has finished its post-invocation work. The poll
+/// long-polls for the next event, so it runs as a background task.
+fn spawn_ready_repoll(client: &Client, base_url: &str, extension_id: &str) {
+    let client = client.clone();
+    let url = format!("{}/2020-01-01/extension/event/next", base_url);
+    let extension_id = extension_id.to_string();
+    tokio::spawn(async move {
+        let _ = client
+            .get(url)
+            .header("Lambda-Extension-Identifier", extension_id)
+            .send()
+            .await;
+    });
+}
+
 /// Helper to wait for events with a predicate, with timeout.
 async fn wait_for_events<F>(
     events: &Arc<Mutex<Vec<TelemetryEvent>>>,
@@ -1941,6 +1959,8 @@ async fn test_duration_includes_extension_overhead() {
         .await
         .unwrap();
 
+    spawn_ready_repoll(&client, &base_url, &extension_id);
+
     tokio::time::sleep(Duration::from_millis(200)).await;
 
     let report_events = simulator
@@ -1960,5 +1980,219 @@ async fn test_duration_includes_extension_overhead() {
         duration_ms
     );
 
+    simulator.shutdown().await;
+}
+
+/// Helper to subscribe an extension to platform telemetry with fast buffering.
+async fn subscribe_platform(
+    client: &Client,
+    base_url: &str,
+    extension_id: &str,
+    telemetry_url: String,
+) {
+    let subscription = TelemetrySubscription {
+        types: vec![TelemetryEventType::Platform],
+        buffering: Some(lambda_simulator::telemetry::BufferingConfig {
+            max_items: Some(100),
+            max_bytes: Some(262144),
+            timeout_ms: Some(25),
+        }),
+        destination: lambda_simulator::telemetry::Destination {
+            protocol: "HTTP".to_string(),
+            uri: telemetry_url,
+        },
+    };
+
+    let response = client
+        .put(format!("{}/2022-07-01/telemetry", base_url))
+        .header("Lambda-Extension-Identifier", extension_id)
+        .header("Lambda-Extension-Name", "policy-extension")
+        .json(&subscription)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 200);
+}
+
+/// Helper that triggers platform.start by enqueueing an invocation and
+/// polling /next in the background. Returns the join handle.
+fn trigger_platform_start(client: &Client, base_url: &str) -> tokio::task::JoinHandle<()> {
+    let client = client.clone();
+    let base_url = base_url.to_string();
+    tokio::spawn(async move {
+        let _ = client
+            .get(format!("{}/2018-06-01/runtime/invocation/next", base_url))
+            .send()
+            .await;
+    })
+}
+
+/// A suppressed event type must never reach the subscriber while other
+/// platform events (such as `platform.initRuntimeDone` on the first `/next`)
+/// still arrive, proving delivery itself works. The suppressed event remains
+/// available to test assertions via the internal capture buffer.
+#[tokio::test]
+async fn test_delivery_policy_suppress_blocks_delivery_but_captures() {
+    use lambda_simulator::DeliveryPolicy;
+
+    let simulator = Simulator::builder().build().await.unwrap();
+    let base_url = simulator.runtime_api_url();
+    let client = Client::new();
+
+    let (telemetry_url, events, notify) = start_telemetry_receiver().await;
+    let extension_id = register_extension(&client, &base_url, "policy-extension")
+        .await
+        .unwrap();
+    subscribe_platform(&client, &base_url, &extension_id, telemetry_url).await;
+
+    simulator
+        .set_telemetry_delivery_policy("platform.start", DeliveryPolicy::Suppress)
+        .await;
+
+    let invocation = InvocationBuilder::new()
+        .payload(json!({"test": "data"}))
+        .build()
+        .unwrap();
+    simulator.enqueue(invocation).await;
+    let next_handle = trigger_platform_start(&client, &base_url);
+
+    let has_init_runtime_done = wait_for_events(
+        &events,
+        &notify,
+        |evts| {
+            evts.iter()
+                .any(|e| e.event_type == "platform.initRuntimeDone")
+        },
+        Duration::from_secs(2),
+    )
+    .await;
+    assert!(
+        has_init_runtime_done,
+        "Non-suppressed events should still be delivered"
+    );
+
+    let received_start = wait_for_events(
+        &events,
+        &notify,
+        |evts| evts.iter().any(|e| e.event_type == "platform.start"),
+        Duration::from_millis(500),
+    )
+    .await;
+    assert!(
+        !received_start,
+        "Suppressed platform.start should not be delivered"
+    );
+
+    let captured = simulator
+        .get_telemetry_events_by_type("platform.start")
+        .await;
+    assert_eq!(
+        captured.len(),
+        1,
+        "Suppressed event should still be captured internally"
+    );
+
+    let _ = next_handle.await;
+    simulator.shutdown().await;
+}
+
+/// A delayed event type (400ms here) must not be delivered when checked
+/// well before the delay elapses, and must arrive once the delay plus the
+/// subscription's buffering interval has passed.
+#[tokio::test]
+async fn test_delivery_policy_delay_defers_delivery() {
+    use lambda_simulator::DeliveryPolicy;
+
+    let simulator = Simulator::builder().build().await.unwrap();
+    let base_url = simulator.runtime_api_url();
+    let client = Client::new();
+
+    let (telemetry_url, events, notify) = start_telemetry_receiver().await;
+    let extension_id = register_extension(&client, &base_url, "policy-extension")
+        .await
+        .unwrap();
+    subscribe_platform(&client, &base_url, &extension_id, telemetry_url).await;
+
+    simulator
+        .set_telemetry_delivery_policy(
+            "platform.start",
+            DeliveryPolicy::Delay(Duration::from_millis(400)),
+        )
+        .await;
+
+    let invocation = InvocationBuilder::new()
+        .payload(json!({"test": "data"}))
+        .build()
+        .unwrap();
+    simulator.enqueue(invocation).await;
+    let next_handle = trigger_platform_start(&client, &base_url);
+
+    let received_early = wait_for_events(
+        &events,
+        &notify,
+        |evts| evts.iter().any(|e| e.event_type == "platform.start"),
+        Duration::from_millis(150),
+    )
+    .await;
+    assert!(
+        !received_early,
+        "Delayed platform.start should not be delivered before the delay"
+    );
+
+    let received_late = wait_for_events(
+        &events,
+        &notify,
+        |evts| evts.iter().any(|e| e.event_type == "platform.start"),
+        Duration::from_secs(2),
+    )
+    .await;
+    assert!(
+        received_late,
+        "Delayed platform.start should be delivered after the delay"
+    );
+
+    let _ = next_handle.await;
+    simulator.shutdown().await;
+}
+
+#[tokio::test]
+async fn test_clear_delivery_policies_restores_delivery() {
+    use lambda_simulator::DeliveryPolicy;
+
+    let simulator = Simulator::builder().build().await.unwrap();
+    let base_url = simulator.runtime_api_url();
+    let client = Client::new();
+
+    let (telemetry_url, events, notify) = start_telemetry_receiver().await;
+    let extension_id = register_extension(&client, &base_url, "policy-extension")
+        .await
+        .unwrap();
+    subscribe_platform(&client, &base_url, &extension_id, telemetry_url).await;
+
+    simulator
+        .set_telemetry_delivery_policy("platform.start", DeliveryPolicy::Suppress)
+        .await;
+    simulator.clear_telemetry_delivery_policies().await;
+
+    let invocation = InvocationBuilder::new()
+        .payload(json!({"test": "data"}))
+        .build()
+        .unwrap();
+    simulator.enqueue(invocation).await;
+    let next_handle = trigger_platform_start(&client, &base_url);
+
+    let received = wait_for_events(
+        &events,
+        &notify,
+        |evts| evts.iter().any(|e| e.event_type == "platform.start"),
+        Duration::from_secs(2),
+    )
+    .await;
+    assert!(
+        received,
+        "platform.start should be delivered after policies are cleared"
+    );
+
+    let _ = next_handle.await;
     simulator.shutdown().await;
 }

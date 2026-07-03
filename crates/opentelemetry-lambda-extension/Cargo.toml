@@ -16,12 +16,15 @@ categories = ["development-tools::profiling"]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
+[lib]
+bench = false
+
 [[bin]]
 name = "opentelemetry-lambda-extension"
 path = "src/main.rs"
+bench = false
 
 [dependencies]
-opentelemetry-configuration.workspace = true
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -44,11 +47,6 @@ lambda-extension = "1.0.4"
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 opentelemetry-semantic-conventions = { version = "0.32", features = ["semconv_experimental"] }
 anyhow = "1.0.102"
-opentelemetry-otlp = { workspace = true, features = ["http-proto", "grpc-tonic"] }
-opentelemetry-appender-tracing = "0.32.0"
-tonic = "0.14.6"
-tracing-opentelemetry.workspace = true
-humantime-serde = "1.1.1"
 rand = "0.10.1"
 
 [dev-dependencies]
@@ -64,4 +62,12 @@ proptest = "1.11.0"
 
 [[bench]]
 name = "conversion"
+harness = false
+
+[[bench]]
+name = "aggregator"
+harness = false
+
+[[bench]]
+name = "export_encode"
 harness = false

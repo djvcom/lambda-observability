@@ -169,3 +169,4 @@ pub use invocation::{
 pub use simulator::{Simulator, SimulatorBuilder, SimulatorConfig, SimulatorPhase};
 pub use state::InvocationState;
 pub use telemetry::{TelemetryEvent, TelemetryEventType, TelemetrySubscription};
+pub use telemetry_state::DeliveryPolicy;

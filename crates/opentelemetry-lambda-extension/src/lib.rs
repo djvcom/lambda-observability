@@ -22,8 +22,8 @@
 #![warn(missing_docs)]
 
 pub mod aggregator;
+pub mod completion;
 pub mod config;
-pub mod context;
 pub mod conversion;
 pub mod error;
 pub mod exporter;
@@ -36,18 +36,16 @@ pub mod telemetry;
 pub mod tracing;
 
 pub use aggregator::{BatchedSignal, SignalAggregator};
+pub use completion::{CompletionOutcome, CompletionSource, CompletionTracker};
 pub use config::{
-    Compression, Config, CorrelationConfig, ExporterConfig, FlushConfig, FlushStrategy, Protocol,
-    ReceiverConfig, TelemetryApiConfig,
-};
-pub use context::{
-    InvocationContextManager, PlatformEvent, PlatformEventType, RequestId, SpanContext,
+    CompletionWait, Compression, Config, CorrelationConfig, ExporterConfig, FlushConfig,
+    FlushStrategy, Protocol, ReceiverConfig, TelemetryApiConfig,
 };
 pub use conversion::{MetricsConverter, SpanConverter, TelemetryProcessor};
 pub use error::{ExtensionError, Result};
 pub use exporter::{ExportError, ExportResult, OtlpExporter};
 pub use flush::{FlushManager, FlushReason};
-pub use receiver::{FlushError, HealthResponse, OtlpReceiver, ReceiverHandle, Signal};
+pub use receiver::{HealthResponse, OtlpReceiver, ReceiverHandle, Signal};
 pub use resource::{ResourceBuilder, detect_resource};
 pub use runtime::{ExtensionRuntime, RuntimeBuilder, RuntimeError};
 pub use service::{EventsService, ExtensionState, TelemetryService};
@@ -56,7 +54,3 @@ pub use telemetry::{
     TelemetryListener, TelemetrySubscription, TelemetryType,
 };
 pub use tracing::{W3CTraceContext, XRayTraceHeader};
-
-pub use opentelemetry_configuration::{
-    OtelGuard, OtelSdkBuilder, OtelSdkConfig, Protocol as OtelProtocol, SdkError,
-};

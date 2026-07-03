@@ -168,6 +168,11 @@ pub struct ExtensionState {
 
     /// Notifier for shutdown acknowledgment changes.
     shutdown_notify: Notify,
+
+    /// The request ID of the most recent INVOKE event delivered to each
+    /// extension. Used to distinguish a `/next` poll that signals readiness
+    /// after processing an invocation from the poll that delivers it.
+    delivered_invokes: Mutex<HashMap<ExtensionId, String>>,
 }
 
 impl ExtensionState {
@@ -179,6 +184,7 @@ impl ExtensionState {
             event_notifiers: Mutex::new(HashMap::new()),
             shutdown_acknowledged: Mutex::new(std::collections::HashSet::new()),
             shutdown_notify: Notify::new(),
+            delivered_invokes: Mutex::new(HashMap::new()),
         }
     }
 
@@ -256,6 +262,12 @@ impl ExtensionState {
                 let mut queues = self.event_queues.lock().await;
                 if let Some(queue) = queues.get_mut(extension_id) {
                     if let Some(event) = queue.pop_front() {
+                        if let LifecycleEvent::Invoke { request_id, .. } = &event {
+                            self.delivered_invokes
+                                .lock()
+                                .await
+                                .insert(extension_id.to_string(), request_id.clone());
+                        }
                         return Some(event);
                     }
                 } else {
@@ -272,6 +284,16 @@ impl ExtensionState {
                 return None;
             }
         }
+    }
+
+    /// Returns the request ID of the most recent INVOKE event delivered to
+    /// the given extension, if any.
+    pub async fn delivered_invoke(&self, extension_id: &str) -> Option<String> {
+        self.delivered_invokes
+            .lock()
+            .await
+            .get(extension_id)
+            .cloned()
     }
 
     /// Gets information about a registered extension.

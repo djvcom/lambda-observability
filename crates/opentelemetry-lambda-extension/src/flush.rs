@@ -244,6 +244,7 @@ mod tests {
             interval: Duration::from_millis(100),
             max_batch_bytes: 1024,
             max_batch_entries: 10,
+            ..Default::default()
         }
     }
 

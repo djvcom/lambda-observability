@@ -177,6 +177,7 @@ async fn demo_freeze_thaw_with_real_processes() {
         .env("LAMBDA_OTEL_EXPORTER_COMPRESSION", "none")
         .env("LAMBDA_OTEL_FLUSH_STRATEGY", "end")
         .env("LAMBDA_OTEL_RECEIVER_HTTP_ENABLED", "true")
+        .env("LAMBDA_OTEL_RECEIVER_HTTP_PORT", "24318")
         .env("LAMBDA_OTEL_TELEMETRY_API_ENABLED", "true")
         .env("RUST_LOG", "info,opentelemetry_lambda_extension=info")
         .inherit_stdio(true);
@@ -195,7 +196,7 @@ async fn demo_freeze_thaw_with_real_processes() {
         .await
         .expect("Extension did not register");
 
-    wait_for_http_ready(4318, Duration::from_secs(5))
+    wait_for_http_ready(24318, Duration::from_secs(5))
         .await
         .expect("Extension OTLP receiver not ready");
 
@@ -212,7 +213,7 @@ async fn demo_freeze_thaw_with_real_processes() {
         .env("AWS_LAMBDA_FUNCTION_VERSION", "$LATEST")
         .env("AWS_LAMBDA_FUNCTION_MEMORY_SIZE", "256")
         .env("AWS_REGION", "us-east-1")
-        .env("OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:4318")
+        .env("OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:24318")
         .env("OTEL_EXPORTER_OTLP_PROTOCOL", "http/protobuf")
         .env("RUST_LOG", "info,opentelemetry=debug")
         .inherit_stdio(true);

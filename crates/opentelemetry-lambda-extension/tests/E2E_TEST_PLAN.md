@@ -603,28 +603,22 @@ After the main happy-path test works:
 
 ---
 
-## Test File Location
+## Test File Locations
 
 ```
-crates/lambda-otel-extension/tests/e2e_integration_test.rs
+crates/opentelemetry-lambda-extension/tests/e2e_integration_test.rs   # In-process pipeline test
+crates/opentelemetry-lambda-extension/tests/lifecycle_test.rs         # Freeze-safe export against a real spawned process
+crates/opentelemetry-lambda-extension/tests/characterisation_test.rs  # Overhead, mid-invocation export, memory ceiling
+crates/opentelemetry-lambda-extension/tests/common/harness.rs         # Shared spawn/invocation helpers
 ```
 
 ---
 
 ## Dependencies Required
 
-```toml
-[dev-dependencies]
-tokio = { version = "1", features = ["full", "test-util"] }
-mock-collector = { path = "../../mock-collector" }
-lambda_runtime = "0.13"
-serde_json = "1"
-temp-env = "0.3"
-hex = "0.4"
-opentelemetry = "0.24"
-opentelemetry-sdk = { version = "0.24", features = ["rt-tokio"] }
-opentelemetry-otlp = { version = "0.17", features = ["http-proto"] }
-```
+See `[dev-dependencies]` in `crates/opentelemetry-lambda-extension/Cargo.toml`;
+the tests use `lambda-simulator`, the published `mock-collector` crate, and
+`serial_test` for suites that share the receiver port.
 
 ---
 

@@ -13,6 +13,7 @@ This workspace provides production-ready tools for instrumenting, testing, and c
 | [opentelemetry-lambda-tower](crates/opentelemetry-lambda-tower/) | Tower middleware for automatic Lambda handler instrumentation |
 | [opentelemetry-lambda-extension](crates/opentelemetry-lambda-extension/) | Deployable Lambda extension for OTLP telemetry collection |
 | [opentelemetry-lambda-example](crates/opentelemetry-lambda-example/) | Reference implementations demonstrating usage |
+| [wrappers](wrappers/) | Node.js and Python handler wrappers that signal invocation completion to the extension |
 
 ## Quick Start
 
@@ -115,7 +116,6 @@ flowchart LR
     end
 
     tower --> config
-    ext --> config
     example --> tower
     example --> config
     example -.->|"tested with"| sim
@@ -185,7 +185,17 @@ cargo clippy --workspace -- -D warnings
 
 # Build documentation
 cargo doc --workspace --no-deps --open
+
+# Run benchmarks
+cargo bench -p opentelemetry-lambda-extension
 ```
+
+Benchmark results for every commit on `main` are published to
+[GitHub Pages](https://djvcom.github.io/lambda-observability/dev/bench/),
+charting each benchmark over time with commits on the x-axis. Pull
+requests run the same benchmarks against the latest `main` baseline and
+the check fails when a benchmark regresses beyond 150% of the baseline;
+shared runners are noisy, so the threshold is deliberately generous.
 
 ## Minimum Supported Rust Version
 

@@ -46,6 +46,21 @@ impl Default for BufferingConfig {
 /// Maximum number of events stored in the internal test capture buffer.
 const MAX_CAPTURED_EVENTS: usize = 10000;
 
+/// Delivery policy for telemetry events of a specific event type.
+///
+/// Policies let tests simulate real-world Telemetry API behaviour where
+/// events arrive late or not at all (for example `platform.runtimeDone`
+/// being delivered after the environment has been frozen). Policies affect
+/// delivery to subscribed extensions only; events are always captured in
+/// the internal test buffer at emission time.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DeliveryPolicy {
+    /// Never deliver events of this type to subscribed extensions.
+    Suppress,
+    /// Delay delivery of events of this type by the given duration.
+    Delay(Duration),
+}
+
 /// State for managing telemetry subscriptions and event delivery.
 #[derive(Debug)]
 pub(crate) struct TelemetryState {
@@ -79,6 +94,9 @@ pub(crate) struct TelemetryState {
     /// Shutdown waits to acquire this lock before proceeding, ensuring all
     /// in-flight flush operations complete before SHUTDOWN is sent.
     flush_lock: RwLock<()>,
+
+    /// Delivery policies keyed by event type (e.g. `platform.runtimeDone`).
+    delivery_policies: Mutex<HashMap<String, DeliveryPolicy>>,
 }
 
 impl TelemetryState {
@@ -100,7 +118,24 @@ impl TelemetryState {
             capture_mode: Mutex::new(false),
             captured_events: Mutex::new(Vec::new()),
             flush_lock: RwLock::new(()),
+            delivery_policies: Mutex::new(HashMap::new()),
         }
+    }
+
+    /// Sets a delivery policy for telemetry events of the given type.
+    ///
+    /// The policy applies to all subsequently broadcast events whose
+    /// `event_type` matches exactly (e.g. `platform.runtimeDone`).
+    pub async fn set_delivery_policy(&self, event_type: impl Into<String>, policy: DeliveryPolicy) {
+        self.delivery_policies
+            .lock()
+            .await
+            .insert(event_type.into(), policy);
+    }
+
+    /// Removes all configured delivery policies.
+    pub async fn clear_delivery_policies(&self) {
+        self.delivery_policies.lock().await.clear();
     }
 
     /// Subscribes an extension to telemetry events.
@@ -230,11 +265,20 @@ impl TelemetryState {
     /// if capture mode is not explicitly enabled. All buffers are bounded:
     /// when full, the oldest events are dropped to make room for new ones.
     ///
+    /// Delivery to extensions honours any configured [`DeliveryPolicy`] for
+    /// the event's type: suppressed events are captured but never buffered
+    /// for delivery, and delayed events are buffered after the configured
+    /// delay elapses.
+    ///
     /// # Arguments
     ///
     /// * `event` - The telemetry event to broadcast
     /// * `event_type` - The type of the event (platform, function, extension)
-    pub async fn broadcast_event(&self, event: TelemetryEvent, event_type: TelemetryEventType) {
+    pub async fn broadcast_event(
+        self: &Arc<Self>,
+        event: TelemetryEvent,
+        event_type: TelemetryEventType,
+    ) {
         // Always capture events for test introspection (bounded buffer)
         {
             let mut captured = self.captured_events.lock().await;
@@ -245,6 +289,38 @@ impl TelemetryState {
             captured.push(event.clone());
         }
 
+        let policy = self
+            .delivery_policies
+            .lock()
+            .await
+            .get(&event.event_type)
+            .copied();
+
+        match policy {
+            Some(DeliveryPolicy::Suppress) => {
+                tracing::debug!(
+                    event_type = %event.event_type,
+                    "Delivery policy suppressed telemetry event"
+                );
+            }
+            Some(DeliveryPolicy::Delay(delay)) => {
+                tracing::debug!(
+                    event_type = %event.event_type,
+                    delay_ms = delay.as_millis(),
+                    "Delivery policy delaying telemetry event"
+                );
+                let state = Arc::clone(self);
+                tokio::spawn(async move {
+                    tokio::time::sleep(delay).await;
+                    state.buffer_event(event, event_type).await;
+                });
+            }
+            None => self.buffer_event(event, event_type).await,
+        }
+    }
+
+    /// Buffers an event for delivery to all matching subscribed extensions.
+    async fn buffer_event(&self, event: TelemetryEvent, event_type: TelemetryEventType) {
         let subscriptions = self.subscriptions.lock().await;
         let mut buffers = self.event_buffers.lock().await;
 

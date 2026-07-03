@@ -5,6 +5,11 @@
 
 use std::time::{Duration, Instant};
 
+/// Allowed dead code: each test binary compiles this module independently
+/// and uses a different subset of the harness.
+#[allow(dead_code)]
+pub mod harness;
+
 /// Polls an HTTP health endpoint until it responds successfully.
 ///
 /// This is the preferred method for waiting for HTTP servers to start in tests,

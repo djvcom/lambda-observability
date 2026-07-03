@@ -35,6 +35,24 @@ async fn register_extension(
         .to_string()
 }
 
+/// Signals extension readiness by re-polling `/next` in the background.
+///
+/// A `/next` poll made after the INVOKE has been delivered tells the
+/// simulator the extension has finished its post-invocation work. The poll
+/// long-polls for the next event, so it runs as a background task.
+fn spawn_ready_repoll(client: &Client, base_url: &str, extension_id: &str) {
+    let client = client.clone();
+    let url = format!("{}/2020-01-01/extension/event/next", base_url);
+    let extension_id = extension_id.to_string();
+    tokio::spawn(async move {
+        let _ = client
+            .get(url)
+            .header("Lambda-Extension-Identifier", extension_id)
+            .send()
+            .await;
+    });
+}
+
 /// Some extensions ready, some timeout - partial readiness triggers timeout.
 #[tokio::test]
 async fn test_partial_extension_readiness_triggers_timeout() {
@@ -508,6 +526,8 @@ async fn test_extension_overhead_can_exceed_deadline() {
         .await
         .unwrap();
 
+    spawn_ready_repoll(&client, &base_url, &ext_id);
+
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     let state = simulator
@@ -599,6 +619,8 @@ async fn test_extension_overhead_minimal_when_fast() {
         .send()
         .await
         .unwrap();
+
+    spawn_ready_repoll(&client, &base_url, &ext_id);
 
     tokio::time::sleep(Duration::from_millis(100)).await;
 

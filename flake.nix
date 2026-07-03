@@ -28,7 +28,6 @@
       devShells = forAllSystems (pkgs: {
         default = pkgs.mkShell {
           packages = with pkgs; [
-            # Rust toolchain
             (rust-bin.stable.latest.default.override {
               extensions = [
                 "rust-src"
@@ -37,12 +36,13 @@
             })
             cargo-lambda
 
-            # Native dependencies
             openssl
             pkg-config
 
-            # Nix tooling
-            nixfmt-rfc-style
+            nodejs
+            python3
+
+            nixfmt
             statix
             deadnix
           ];

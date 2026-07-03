@@ -14,7 +14,7 @@
 //! | Variable | Config Path | Description |
 //! |----------|-------------|-------------|
 //! | `OTEL_EXPORTER_OTLP_ENDPOINT` | `exporter.endpoint` | OTLP endpoint URL |
-//! | `OTEL_EXPORTER_OTLP_PROTOCOL` | `exporter.protocol` | Protocol (http or grpc) |
+//! | `OTEL_EXPORTER_OTLP_PROTOCOL` | `exporter.protocol` | Protocol (only `http` is supported) |
 //! | `OTEL_EXPORTER_OTLP_HEADERS` | `exporter.headers` | Comma-separated key=value pairs |
 //! | `OTEL_EXPORTER_OTLP_COMPRESSION` | `exporter.compression` | Compression (gzip or none) |
 //!
@@ -37,7 +37,8 @@ const ENV_PREFIX: &str = "LAMBDA_OTEL_";
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum Protocol {
-    /// gRPC protocol (port 4317).
+    /// gRPC protocol (port 4317). Parsed for compatibility but not
+    /// supported: the exporter rejects it at startup with a clear error.
     Grpc,
     /// HTTP/protobuf protocol (port 4318).
     #[default]
@@ -118,7 +119,7 @@ impl Config {
         }
 
         figment = figment.merge(standard_otel_env());
-        figment = figment.merge(Env::prefixed(ENV_PREFIX).split("_"));
+        figment = figment.merge(prefixed_env());
 
         figment.extract()
     }
@@ -163,12 +164,8 @@ impl Default for ExporterConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ReceiverConfig {
-    /// gRPC port (default 4317).
-    pub grpc_port: u16,
     /// HTTP port (default 4318).
     pub http_port: u16,
-    /// Whether to enable the gRPC receiver.
-    pub grpc_enabled: bool,
     /// Whether to enable the HTTP receiver.
     pub http_enabled: bool,
 }
@@ -176,12 +173,35 @@ pub struct ReceiverConfig {
 impl Default for ReceiverConfig {
     fn default() -> Self {
         Self {
-            grpc_port: 4317,
             http_port: 4318,
-            grpc_enabled: true,
             http_enabled: true,
         }
     }
+}
+
+/// How long to hold the `/next` poll waiting for invocation completion
+/// signals before flushing in the post-invocation window.
+///
+/// Holding `/next` keeps the execution environment thawed so exports cannot
+/// be interrupted by a freeze. The hold releases as soon as a completion
+/// signal arrives (a wrapper's `POST /invocation/complete` or the
+/// `platform.runtimeDone` event), so its cost is normally a few
+/// milliseconds of billed duration after the response has been sent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum CompletionWait {
+    /// Hold until a completion signal arrives, bounded by the invocation
+    /// deadline. Holding is disabled automatically after a hold times out
+    /// and re-enabled when signals are next observed.
+    #[default]
+    Auto,
+    /// Never hold `/next`; flush opportunistically at the next INVOKE
+    /// instead. Telemetry may be delayed by one invocation and the final
+    /// export before a freeze is not guaranteed.
+    Off,
+    /// As `auto`, but cap the hold at the given duration in milliseconds.
+    #[serde(untagged)]
+    Cap(#[serde(with = "duration_ms")] Duration),
 }
 
 /// Flush behaviour configuration.
@@ -197,6 +217,19 @@ pub struct FlushConfig {
     pub max_batch_bytes: usize,
     /// Maximum entries per batch.
     pub max_batch_entries: usize,
+    /// How long to hold `/next` waiting for invocation completion.
+    pub completion_wait: CompletionWait,
+    /// Maximum bytes of encoded telemetry buffered across all signal
+    /// queues. When the budget is exceeded, the oldest signals are dropped.
+    ///
+    /// This bounds the *encoded* size; the decoded structures on the heap
+    /// are typically two to five times larger, so size this well below the
+    /// function's memory allowance. Defaults to 10% of
+    /// `AWS_LAMBDA_FUNCTION_MEMORY_SIZE` clamped to 4–32 MiB, or 16 MiB
+    /// when the variable is not set.
+    pub max_queue_bytes: usize,
+    /// Maximum number of signals buffered across all signal queues.
+    pub max_queue_entries: usize,
 }
 
 impl Default for FlushConfig {
@@ -206,8 +239,24 @@ impl Default for FlushConfig {
             interval: Duration::from_secs(20),
             max_batch_bytes: 4 * 1024 * 1024,
             max_batch_entries: 1000,
+            completion_wait: CompletionWait::Auto,
+            max_queue_bytes: default_max_queue_bytes(),
+            max_queue_entries: 4096,
         }
     }
+}
+
+/// Derives the default queue byte budget from the function's memory size.
+fn default_max_queue_bytes() -> usize {
+    const MIN: usize = 4 * 1024 * 1024;
+    const MAX: usize = 32 * 1024 * 1024;
+    const FALLBACK: usize = 16 * 1024 * 1024;
+
+    std::env::var("AWS_LAMBDA_FUNCTION_MEMORY_SIZE")
+        .ok()
+        .and_then(|mb| mb.parse::<usize>().ok())
+        .map(|mb| (mb * 1024 * 1024 / 10).clamp(MIN, MAX))
+        .unwrap_or(FALLBACK)
 }
 
 /// Span correlation configuration.
@@ -248,7 +297,10 @@ pub struct TelemetryApiConfig {
     pub enabled: bool,
     /// Port for receiving Telemetry API events.
     pub listener_port: u16,
-    /// Buffer size for Telemetry API events.
+    /// Buffer size for Telemetry API events. Also sets the capacity of the
+    /// channel carrying signals from the OTLP receiver to the aggregator;
+    /// when that channel is full the receiver responds with `503` to signal
+    /// backpressure.
     pub buffer_size: usize,
 }
 
@@ -318,21 +370,9 @@ impl ConfigBuilder {
         self
     }
 
-    /// Enables or disables the gRPC receiver.
-    pub fn grpc_receiver(mut self, enabled: bool) -> Self {
-        self.config.receiver.grpc_enabled = enabled;
-        self
-    }
-
     /// Enables or disables the HTTP receiver.
     pub fn http_receiver(mut self, enabled: bool) -> Self {
         self.config.receiver.http_enabled = enabled;
-        self
-    }
-
-    /// Sets the gRPC receiver port.
-    pub fn grpc_port(mut self, port: u16) -> Self {
-        self.config.receiver.grpc_port = port;
         self
     }
 
@@ -385,6 +425,39 @@ fn is_partial_exporter_empty(config: &PartialExporterConfig) -> bool {
         && config.protocol.is_none()
         && config.compression.is_none()
         && config.headers.is_empty()
+}
+
+/// Top-level config sections, used to map environment variable names onto
+/// nested config paths.
+const CONFIG_SECTIONS: &[&str] = &[
+    "telemetry_api",
+    "exporter",
+    "receiver",
+    "flush",
+    "correlation",
+];
+
+/// Builds the `LAMBDA_OTEL_`-prefixed environment provider.
+///
+/// A plain `split("_")` cannot address fields whose names contain
+/// underscores (`LAMBDA_OTEL_RECEIVER_HTTP_PORT` would map to
+/// `receiver.http.port` rather than `receiver.http_port`), so variable names
+/// are mapped onto `section.field` by matching the known section prefixes.
+fn prefixed_env() -> Env {
+    Env::prefixed(ENV_PREFIX)
+        .map(|key| {
+            let lower = key.as_str().to_ascii_lowercase();
+            for section in CONFIG_SECTIONS {
+                if let Some(field) = lower
+                    .strip_prefix(section)
+                    .and_then(|rest| rest.strip_prefix('_'))
+                {
+                    return format!("{section}.{field}").into();
+                }
+            }
+            lower.into()
+        })
+        .split(".")
 }
 
 fn standard_otel_env() -> Serialized<PartialConfig> {
@@ -447,6 +520,7 @@ mod duration_ms {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
     use std::io::Write;
     use tempfile::NamedTempFile;
 
@@ -459,9 +533,7 @@ mod tests {
         assert_eq!(config.exporter.timeout, Duration::from_millis(500));
         assert_eq!(config.exporter.compression, Compression::Gzip);
 
-        assert_eq!(config.receiver.grpc_port, 4317);
         assert_eq!(config.receiver.http_port, 4318);
-        assert!(config.receiver.grpc_enabled);
         assert!(config.receiver.http_enabled);
 
         assert_eq!(config.flush.strategy, FlushStrategy::Default);
@@ -486,9 +558,7 @@ mod tests {
             .flush_interval(Duration::from_secs(10))
             .correlation_delay(Duration::from_millis(200))
             .emit_orphaned_spans(false)
-            .grpc_receiver(false)
             .http_receiver(true)
-            .grpc_port(5317)
             .http_port(5318)
             .telemetry_api(false)
             .build();
@@ -506,14 +576,13 @@ mod tests {
             Duration::from_millis(200)
         );
         assert!(!config.correlation.emit_orphaned_spans);
-        assert!(!config.receiver.grpc_enabled);
         assert!(config.receiver.http_enabled);
-        assert_eq!(config.receiver.grpc_port, 5317);
         assert_eq!(config.receiver.http_port, 5318);
         assert!(!config.telemetry_api.enabled);
     }
 
     #[test]
+    #[serial(config_env)]
     fn test_load_from_toml() {
         let toml_content = r#"
 [exporter]
@@ -522,9 +591,7 @@ protocol = "grpc"
 timeout = 1000
 
 [receiver]
-grpc_port = 5317
 http_port = 5318
-grpc_enabled = false
 
 [flush]
 strategy = "periodic"
@@ -546,9 +613,7 @@ emit_orphaned_spans = false
         );
         assert_eq!(config.exporter.protocol, Protocol::Grpc);
         assert_eq!(config.exporter.timeout, Duration::from_millis(1000));
-        assert_eq!(config.receiver.grpc_port, 5317);
         assert_eq!(config.receiver.http_port, 5318);
-        assert!(!config.receiver.grpc_enabled);
         assert_eq!(config.flush.strategy, FlushStrategy::Periodic);
         assert_eq!(config.flush.interval, Duration::from_secs(15));
         assert_eq!(
@@ -559,11 +624,36 @@ emit_orphaned_spans = false
     }
 
     #[test]
+    #[serial(config_env)]
     fn test_load_nonexistent_file_uses_defaults() {
         let config = Config::load_from_path("/nonexistent/path/config.toml").unwrap();
 
         assert!(config.exporter.endpoint.is_none());
-        assert_eq!(config.receiver.grpc_port, 4317);
+        assert_eq!(config.receiver.http_port, 4318);
+    }
+
+    #[test]
+    #[serial(config_env)]
+    fn test_env_vars_map_to_multi_word_fields() {
+        temp_env::with_vars(
+            [
+                ("LAMBDA_OTEL_RECEIVER_HTTP_PORT", Some("24418")),
+                ("LAMBDA_OTEL_FLUSH_MAX_BATCH_ENTRIES", Some("42")),
+                ("LAMBDA_OTEL_TELEMETRY_API_BUFFER_SIZE", Some("77")),
+                ("LAMBDA_OTEL_EXPORTER_ENDPOINT", Some("http://env:4318")),
+            ],
+            || {
+                let config = Config::load_from_path("/nonexistent/path/config.toml").unwrap();
+
+                assert_eq!(config.receiver.http_port, 24418);
+                assert_eq!(config.flush.max_batch_entries, 42);
+                assert_eq!(config.telemetry_api.buffer_size, 77);
+                assert_eq!(
+                    config.exporter.endpoint,
+                    Some("http://env:4318".to_string())
+                );
+            },
+        );
     }
 
     #[test]

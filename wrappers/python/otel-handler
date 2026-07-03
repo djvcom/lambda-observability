@@ -1,0 +1,17 @@
+#!/bin/bash
+# Entry point for AWS_LAMBDA_EXEC_WRAPPER on Python runtimes.
+#
+# Swaps the configured handler for the completion-signalling wrapper and
+# records the original in ORIG_HANDLER so the wrapper can load and invoke
+# it. The wrapper signals the OpenTelemetry Lambda extension when each
+# invocation finishes, letting the extension flush telemetry in the
+# post-invocation window before the execution environment freezes.
+#
+# Usage: set AWS_LAMBDA_EXEC_WRAPPER=/opt/otel-handler on the function.
+set -euo pipefail
+
+export ORIG_HANDLER="${_HANDLER}"
+export _HANDLER="otel_wrapper.handler"
+export PYTHONPATH="/opt/python${PYTHONPATH:+:${PYTHONPATH}}"
+
+exec "$@"

@@ -9,10 +9,24 @@ use prost::Message;
 use reqwest::Client;
 use serde::Serialize;
 use std::io::Write;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 const MAX_RETRIES: u32 = 3;
 const INITIAL_BACKOFF: Duration = Duration::from_millis(50);
+
+/// Minimum useful time for an export attempt. Attempts are not started (and
+/// retries not scheduled) when less than this remains before the deadline.
+const MIN_ATTEMPT_BUDGET: Duration = Duration::from_millis(100);
+
+/// Largest batch the stdout fallback will serialise in full. JSON-encoding a
+/// large batch multiplies its memory footprint and floods CloudWatch Logs, so
+/// beyond this size only a summary record is emitted.
+const FALLBACK_MAX_BYTES: usize = 256 * 1024;
+
+/// Largest error response body retained for diagnostics. A misbehaving
+/// collector could otherwise return arbitrarily large bodies that end up
+/// buffered and logged in full.
+const ERROR_BODY_MAX_BYTES: usize = 4 * 1024;
 
 /// Result of an export operation.
 #[non_exhaustive]
@@ -50,6 +64,14 @@ pub enum ExportError {
     /// No endpoint configured.
     #[error("no endpoint configured")]
     NoEndpoint,
+
+    /// Export abandoned because the deadline budget was exhausted.
+    #[error("export deadline exceeded")]
+    DeadlineExceeded,
+
+    /// The configured protocol is not supported.
+    #[error("the {0:?} protocol is not supported; set exporter.protocol to \"http\"")]
+    UnsupportedProtocol(Protocol),
 }
 
 impl ExportError {
@@ -76,8 +98,15 @@ impl OtlpExporter {
     ///
     /// # Errors
     ///
-    /// Returns an error if the HTTP client cannot be created.
+    /// Returns [`ExportError::UnsupportedProtocol`] when the configuration
+    /// selects a protocol other than HTTP/protobuf, so a misconfiguration
+    /// fails fast at startup instead of silently losing telemetry. Also
+    /// returns an error if the HTTP client cannot be created.
     pub fn new(config: ExporterConfig) -> Result<Self, ExportError> {
+        if config.protocol != Protocol::Http {
+            return Err(ExportError::UnsupportedProtocol(config.protocol));
+        }
+
         let client = Client::builder()
             .timeout(config.timeout)
             .build()
@@ -97,14 +126,19 @@ impl OtlpExporter {
 
     /// Exports a batch of signals.
     ///
-    /// This method handles retries and fallback to stdout on failure.
-    pub async fn export(&self, batch: BatchedSignal) -> ExportResult {
+    /// This method handles retries and fallback to stdout on failure. The
+    /// optional `deadline` bounds the total time spent, including retries:
+    /// attempts are truncated to the remaining budget and abandoned entirely
+    /// once less than a useful amount remains. Use this whenever the caller
+    /// operates inside a Lambda lifecycle window (the post-invocation hold
+    /// or the SHUTDOWN grace period).
+    pub async fn export(&self, batch: BatchedSignal, deadline: Option<Instant>) -> ExportResult {
         if self.config.endpoint.is_none() {
             tracing::debug!("No endpoint configured, skipping export");
             return ExportResult::Skipped;
         }
 
-        let result = self.export_with_retry(&batch).await;
+        let result = self.export_with_retry(&batch, deadline).await;
 
         match result {
             Ok(()) => ExportResult::Success,
@@ -116,12 +150,37 @@ impl OtlpExporter {
         }
     }
 
-    async fn export_with_retry(&self, batch: &BatchedSignal) -> Result<(), ExportError> {
+    async fn export_with_retry(
+        &self,
+        batch: &BatchedSignal,
+        deadline: Option<Instant>,
+    ) -> Result<(), ExportError> {
         let mut last_error = None;
         let mut backoff = INITIAL_BACKOFF;
 
         for attempt in 0..MAX_RETRIES {
-            match self.try_export(batch).await {
+            let attempt_timeout = match deadline {
+                Some(deadline) => {
+                    let remaining = deadline.saturating_duration_since(Instant::now());
+                    if remaining < MIN_ATTEMPT_BUDGET {
+                        tracing::warn!(
+                            attempt = attempt + 1,
+                            "Deadline budget exhausted, abandoning export"
+                        );
+                        break;
+                    }
+                    self.config.timeout.min(remaining)
+                }
+                None => self.config.timeout,
+            };
+
+            let attempt_result =
+                match tokio::time::timeout(attempt_timeout, self.try_export(batch)).await {
+                    Ok(result) => result,
+                    Err(_elapsed) => Err(ExportError::DeadlineExceeded),
+                };
+
+            match attempt_result {
                 Ok(()) => return Ok(()),
                 Err(ExportError::Status { status, ref body }) if !Self::is_retryable(status) => {
                     tracing::error!(status, "Received non-retryable status code, not retrying");
@@ -137,6 +196,12 @@ impl OtlpExporter {
                     last_error = Some(e);
 
                     if attempt + 1 < MAX_RETRIES {
+                        if let Some(deadline) = deadline
+                            && Instant::now() + backoff + MIN_ATTEMPT_BUDGET >= deadline
+                        {
+                            tracing::warn!("No budget for further retries, abandoning export");
+                            break;
+                        }
                         tokio::time::sleep(backoff).await;
                         backoff *= 2;
                     }
@@ -144,7 +209,7 @@ impl OtlpExporter {
             }
         }
 
-        Err(last_error.unwrap_or(ExportError::NoEndpoint))
+        Err(last_error.unwrap_or(ExportError::DeadlineExceeded))
     }
 
     /// Determines if a status code is retryable per OTLP specification.
@@ -198,7 +263,14 @@ impl OtlpExporter {
         if status.is_success() {
             Ok(())
         } else {
-            let body = response.text().await.unwrap_or_default();
+            let mut body = response.text().await.unwrap_or_default();
+            if body.len() > ERROR_BODY_MAX_BYTES {
+                let mut end = ERROR_BODY_MAX_BYTES;
+                while !body.is_char_boundary(end) {
+                    end -= 1;
+                }
+                body.truncate(end);
+            }
             Err(ExportError::status(status.as_u16(), body))
         }
     }
@@ -220,14 +292,30 @@ impl OtlpExporter {
     }
 
     fn content_type(&self) -> &'static str {
-        match self.config.protocol {
-            Protocol::Http => "application/x-protobuf",
-            Protocol::Grpc => "application/grpc",
-        }
+        "application/x-protobuf"
     }
 
     fn emit_to_stdout(&self, batch: &BatchedSignal) {
         use std::io::Write as _;
+
+        let size_bytes = batch.size_bytes();
+        if size_bytes > FALLBACK_MAX_BYTES {
+            tracing::warn!(
+                size_bytes,
+                signal_type = batch.signal_type(),
+                "Batch too large for stdout fallback, emitting summary only"
+            );
+            let summary = serde_json::json!({
+                "otlp_fallback": {
+                    "type": batch.signal_type(),
+                    "truncated": true,
+                    "encoded_bytes": size_bytes,
+                }
+            });
+            let mut stdout = std::io::stdout().lock();
+            let _ = writeln!(stdout, "{}", summary);
+            return;
+        }
 
         let fallback = match batch {
             BatchedSignal::Traces(req) => OtlpFallback {
@@ -309,7 +397,7 @@ mod tests {
         let exporter = OtlpExporter::with_defaults().unwrap();
         let batch = make_trace_batch();
 
-        let result = exporter.export(batch).await;
+        let result = exporter.export(batch, None).await;
         assert_eq!(result, ExportResult::Skipped);
     }
 
@@ -360,13 +448,20 @@ mod tests {
         };
         let exporter = OtlpExporter::new(config).unwrap();
         assert_eq!(exporter.content_type(), "application/x-protobuf");
+    }
 
+    #[test]
+    fn test_grpc_protocol_is_rejected_at_construction() {
         let config = ExporterConfig {
             protocol: Protocol::Grpc,
             ..Default::default()
         };
-        let exporter = OtlpExporter::new(config).unwrap();
-        assert_eq!(exporter.content_type(), "application/grpc");
+
+        let result = OtlpExporter::new(config);
+        assert!(matches!(
+            result,
+            Err(ExportError::UnsupportedProtocol(Protocol::Grpc))
+        ));
     }
 
     #[test]
@@ -386,6 +481,27 @@ mod tests {
 
         assert!(err.source().is_some());
         assert!(format!("{}", err).contains("encode"));
+    }
+
+    /// Points at the discard port, where connections are refused: the
+    /// budget check must abandon the export before any attempt is made.
+    #[tokio::test]
+    async fn test_expired_deadline_abandons_export_quickly() {
+        let config = ExporterConfig {
+            endpoint: Some("http://127.0.0.1:9".to_string()),
+            ..Default::default()
+        };
+        let exporter = OtlpExporter::new(config).unwrap();
+
+        let started = Instant::now();
+        let deadline = Instant::now() - Duration::from_millis(1);
+        let result = exporter.export(make_trace_batch(), Some(deadline)).await;
+
+        assert_eq!(result, ExportResult::Fallback);
+        assert!(
+            started.elapsed() < Duration::from_millis(100),
+            "An exhausted budget must not spend time on attempts or backoff"
+        );
     }
 
     #[test]

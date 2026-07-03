@@ -1634,18 +1634,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "opentelemetry-appender-tracing"
-version = "0.32.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2c0080f0dc1d7c786f467cd85a4e395fcab11ee852004f39a29a18ab7c25d837"
-dependencies = [
- "opentelemetry 0.32.0",
- "tracing",
- "tracing-core",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "opentelemetry-configuration"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1654,7 +1642,7 @@ dependencies = [
  "figment",
  "humantime-serde",
  "opentelemetry 0.31.0",
- "opentelemetry-appender-tracing 0.31.1",
+ "opentelemetry-appender-tracing",
  "opentelemetry-otlp 0.31.1",
  "opentelemetry-proto 0.31.0",
  "opentelemetry-resource-detectors",
@@ -1728,16 +1716,12 @@ dependencies = [
  "figment",
  "flate2",
  "hex",
- "humantime-serde",
  "lambda-extension",
  "lambda-simulator",
  "lambda_runtime",
  "mock-collector",
  "opentelemetry 0.31.0",
- "opentelemetry-appender-tracing 0.32.0",
- "opentelemetry-configuration",
  "opentelemetry-lambda-example",
- "opentelemetry-otlp 0.32.0",
  "opentelemetry-proto 0.31.0",
  "opentelemetry-semantic-conventions 0.32.0",
  "opentelemetry_sdk 0.31.0",
@@ -1753,10 +1737,8 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "tokio-util",
- "tonic",
  "tower",
  "tracing",
- "tracing-opentelemetry",
  "tracing-subscriber",
 ]
 

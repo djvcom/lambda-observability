@@ -112,7 +112,7 @@ async fn test_e2e_with_real_processes() {
         .env("LAMBDA_OTEL_EXPORTER_COMPRESSION", "none")
         .env("LAMBDA_OTEL_FLUSH_STRATEGY", "end")
         .env("LAMBDA_OTEL_RECEIVER_HTTP_ENABLED", "true")
-        .env("LAMBDA_OTEL_RECEIVER_HTTP_PORT", "4318")
+        .env("LAMBDA_OTEL_RECEIVER_HTTP_PORT", "24318")
         .env("LAMBDA_OTEL_TELEMETRY_API_ENABLED", "true")
         .env("LAMBDA_OTEL_TELEMETRY_API_LISTENER_PORT", "9001")
         .env(
@@ -143,7 +143,7 @@ async fn test_e2e_with_real_processes() {
     );
 
     // Wait for extension's OTLP receiver to be ready
-    wait_for_http_ready(4318, Duration::from_secs(5))
+    wait_for_http_ready(24318, Duration::from_secs(5))
         .await
         .expect("Extension OTLP receiver did not become ready");
     println!("Extension OTLP receiver is ready");
@@ -160,7 +160,7 @@ async fn test_e2e_with_real_processes() {
         .env("AWS_LAMBDA_FUNCTION_VERSION", "$LATEST")
         .env("AWS_LAMBDA_FUNCTION_MEMORY_SIZE", "128")
         .env("AWS_REGION", "us-east-1")
-        .env("OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:4318")
+        .env("OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:24318")
         .env("OTEL_EXPORTER_OTLP_PROTOCOL", "http/protobuf")
         .env("OTEL_TRACES_EXPORTER", "otlp")
         .env(
@@ -451,8 +451,6 @@ async fn test_e2e_with_freeze_mode() {
     let runtime_api_base = runtime_api.replace("http://", "");
     println!("Simulator with freeze mode started at: {}", runtime_api);
 
-    // Start extension (using default port 4318 - the RECEIVER_HTTP_PORT env var
-    // doesn't work due to figment's underscore splitting)
     let extension_binary = extension_binary_path();
     let extension_config = ProcessConfig::new(&extension_binary, ProcessRole::Extension)
         .env("AWS_LAMBDA_RUNTIME_API", &runtime_api_base)
@@ -461,6 +459,7 @@ async fn test_e2e_with_freeze_mode() {
         .env("LAMBDA_OTEL_EXPORTER_COMPRESSION", "none")
         .env("LAMBDA_OTEL_FLUSH_STRATEGY", "end")
         .env("LAMBDA_OTEL_RECEIVER_HTTP_ENABLED", "true")
+        .env("LAMBDA_OTEL_RECEIVER_HTTP_PORT", "24318")
         .env("LAMBDA_OTEL_TELEMETRY_API_ENABLED", "false")
         .env(
             "RUST_LOG",
@@ -480,7 +479,7 @@ async fn test_e2e_with_freeze_mode() {
         .await
         .expect("Extension did not register");
 
-    wait_for_http_ready(4318, Duration::from_secs(5))
+    wait_for_http_ready(24318, Duration::from_secs(5))
         .await
         .expect("Extension OTLP receiver did not become ready");
 
@@ -491,7 +490,7 @@ async fn test_e2e_with_freeze_mode() {
         .env("AWS_LAMBDA_FUNCTION_NAME", "e2e-freeze-test")
         .env("AWS_LAMBDA_FUNCTION_VERSION", "$LATEST")
         .env("AWS_LAMBDA_FUNCTION_MEMORY_SIZE", "128")
-        .env("OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:4318")
+        .env("OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:24318")
         .inherit_stdio(true);
 
     let runtime = simulator
