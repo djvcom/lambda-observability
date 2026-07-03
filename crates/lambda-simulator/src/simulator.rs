@@ -15,7 +15,7 @@ use crate::telemetry::{
     InitializationType, Phase, PlatformInitStart, TelemetryEvent, TelemetryEventType,
 };
 use crate::telemetry_api::{TelemetryApiState, create_telemetry_api_router};
-use crate::telemetry_state::TelemetryState;
+use crate::telemetry_state::{DeliveryPolicy, TelemetryState};
 use chrono::Utc;
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -983,6 +983,51 @@ impl Simulator {
     /// Clears all captured telemetry events.
     pub async fn clear_telemetry_events(&self) {
         self.telemetry_state.clear_captured_events().await;
+    }
+
+    /// Sets a delivery policy for telemetry events of the given type.
+    ///
+    /// Use this to simulate late or missing Telemetry API delivery, such as
+    /// `platform.runtimeDone` arriving after the environment has frozen.
+    /// Events are still captured for test assertions regardless of policy.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use lambda_simulator::{DeliveryPolicy, Simulator};
+    /// use std::time::Duration;
+    ///
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let simulator = Simulator::builder().build().await?;
+    ///
+    /// // Deliver runtimeDone five seconds late
+    /// simulator
+    ///     .set_telemetry_delivery_policy(
+    ///         "platform.runtimeDone",
+    ///         DeliveryPolicy::Delay(Duration::from_secs(5)),
+    ///     )
+    ///     .await;
+    ///
+    /// // Never deliver report events
+    /// simulator
+    ///     .set_telemetry_delivery_policy("platform.report", DeliveryPolicy::Suppress)
+    ///     .await;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn set_telemetry_delivery_policy(
+        &self,
+        event_type: impl Into<String>,
+        policy: DeliveryPolicy,
+    ) {
+        self.telemetry_state
+            .set_delivery_policy(event_type, policy)
+            .await;
+    }
+
+    /// Removes all configured telemetry delivery policies.
+    pub async fn clear_telemetry_delivery_policies(&self) {
+        self.telemetry_state.clear_delivery_policies().await;
     }
 
     /// Gets the current lifecycle phase of the simulator.
