@@ -13,6 +13,7 @@ This workspace provides production-ready tools for instrumenting, testing, and c
 | [opentelemetry-lambda-tower](crates/opentelemetry-lambda-tower/) | Tower middleware for automatic Lambda handler instrumentation |
 | [opentelemetry-lambda-extension](crates/opentelemetry-lambda-extension/) | Deployable Lambda extension for OTLP telemetry collection |
 | [opentelemetry-lambda-example](crates/opentelemetry-lambda-example/) | Reference implementations demonstrating usage |
+| [wrappers](wrappers/) | Node.js and Python handler wrappers that signal invocation completion to the extension |
 
 ## Quick Start
 
@@ -115,7 +116,6 @@ flowchart LR
     end
 
     tower --> config
-    ext --> config
     example --> tower
     example --> config
     example -.->|"tested with"| sim

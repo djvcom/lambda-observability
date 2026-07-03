@@ -8,13 +8,13 @@ This extension receives telemetry data (traces, metrics, logs) from instrumented
 
 ## Features
 
-- **Multi-signal support** - Traces, metrics, and logs via OTLP (HTTP and gRPC)
-- **Automatic batching** - Intelligent signal aggregation with size and time limits
-- **Adaptive flushing** - Flush before Lambda freezes to prevent data loss
+- **Multi-signal support** - Traces, metrics, and logs via OTLP/HTTP
+- **Freeze-safe flushing** - Exports finish in the post-invocation window, before the execution environment freezes, so no HTTP request is left dangling across a freeze
+- **Invocation completion signalling** - Handler wrappers (see [`wrappers/`](../../wrappers)) tell the extension the moment the handler finishes, with `platform.runtimeDone` as backup and a bounded deadline fallback
+- **Bounded memory** - All buffered telemetry lives under one shared byte/entry budget derived from the function's memory size; the oldest signals are dropped rather than growing without limit
+- **Deadline-aware shutdown** - The final flush is budgeted against the SHUTDOWN deadline, abandoning deliberately rather than being SIGKILLed mid-export
 - **Platform telemetry** - Captures Lambda platform metrics (duration, memory, cold starts)
-- **Span correlation** - Links function spans with platform telemetry
 - **Resource detection** - Automatically detects Lambda resource attributes
-- **Configurable exports** - HTTP or gRPC, with compression and timeout options
 
 ## Installation
 
@@ -72,7 +72,7 @@ cargo lambda build --release --extension --arm64
 
 ### Binary Size Optimisation
 
-This extension is designed to be lightweight. With the workspace's release profile, the binary is approximately **4.4 MB** (compared to ~30 MB for the OpenTelemetry Collector Lambda distribution).
+This extension is designed to be lightweight compared to the ~30 MB OpenTelemetry Collector Lambda distribution.
 
 The workspace `Cargo.toml` includes optimised release profiles:
 
@@ -90,8 +90,8 @@ opt-level = "z"      # Optimise for size over speed
 
 | Profile | Size | Use Case |
 |---------|------|----------|
-| `--release` | ~4.4 MB | Recommended default |
-| `--profile release-small` | ~2.7 MB | When size is critical |
+| `--release` | ~9.4 MB | Recommended default |
+| `--profile release-small` | ~7.0 MB | When size is critical |
 
 For even smaller binaries, you can apply UPX compression to the Linux binary:
 
@@ -119,49 +119,68 @@ cargo bloat --release -p opentelemetry-lambda-extension -n 20
 
 ### Configuration
 
-Configure the extension via environment variables or a TOML config file.
+Configuration is layered, in order of priority: compiled-in defaults, then
+the optional TOML file `/var/task/otel-extension.toml`, then standard
+`OTEL_*` environment variables, then extension-specific `LAMBDA_OTEL_*`
+environment variables.
 
-#### Environment Variables
+#### Standard OpenTelemetry Environment Variables
 
 ```bash
-# OTLP endpoint
 OTEL_EXPORTER_OTLP_ENDPOINT=https://your-collector.example.com
-
-# Protocol (http or grpc)
-OTEL_EXPORTER_OTLP_PROTOCOL=http
-
-# Compression
+OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
 OTEL_EXPORTER_OTLP_COMPRESSION=gzip
-
-# Headers (for authentication)
 OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer token"
-
-# Extension-specific settings
-OTEL_LAMBDA_FLUSH_TIMEOUT=5s
-OTEL_LAMBDA_RECEIVER_PORT=9999
 ```
+
+#### Extension-Specific Environment Variables
+
+Every config field maps to `LAMBDA_OTEL_<SECTION>_<FIELD>`. Durations are
+in milliseconds.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `LAMBDA_OTEL_EXPORTER_ENDPOINT` | unset | OTLP endpoint; without it, exports fall back to stdout |
+| `LAMBDA_OTEL_EXPORTER_PROTOCOL` | `http` | Only `http` is supported |
+| `LAMBDA_OTEL_EXPORTER_TIMEOUT` | `500` | Per-request export timeout |
+| `LAMBDA_OTEL_EXPORTER_COMPRESSION` | `gzip` | `gzip` or `none` |
+| `LAMBDA_OTEL_RECEIVER_HTTP_PORT` | `4318` | Local OTLP receiver port |
+| `LAMBDA_OTEL_RECEIVER_HTTP_ENABLED` | `true` | Enable the local receiver |
+| `LAMBDA_OTEL_FLUSH_STRATEGY` | `default` | `default`, `end`, `periodic` or `continuous` |
+| `LAMBDA_OTEL_FLUSH_INTERVAL` | `20000` | Periodic flush interval |
+| `LAMBDA_OTEL_FLUSH_COMPLETION_WAIT` | `auto` | `auto`, `off`, or a cap in milliseconds on how long `/next` is held awaiting completion |
+| `LAMBDA_OTEL_FLUSH_MAX_BATCH_BYTES` | `4194304` | Encoded bytes per export batch |
+| `LAMBDA_OTEL_FLUSH_MAX_BATCH_ENTRIES` | `1000` | Signals per export batch |
+| `LAMBDA_OTEL_FLUSH_MAX_QUEUE_BYTES` | 10% of function memory, clamped to 4–32 MiB | Shared byte budget across all buffered telemetry |
+| `LAMBDA_OTEL_FLUSH_MAX_QUEUE_ENTRIES` | `4096` | Shared entry budget across all buffered telemetry |
+| `LAMBDA_OTEL_TELEMETRY_API_ENABLED` | `true` | Subscribe to the Lambda Telemetry API |
+| `LAMBDA_OTEL_TELEMETRY_API_LISTENER_PORT` | `9999` | Port for receiving Telemetry API events |
 
 #### TOML Configuration
 
-Place a `config.toml` in the Lambda function's deployment package:
+Place `otel-extension.toml` in the Lambda function's deployment package
+(`/var/task`):
 
 ```toml
 [exporter]
 endpoint = "https://your-collector.example.com"
 protocol = "http"
 compression = "gzip"
-timeout = "30s"
+timeout = 500
 
 [exporter.headers]
 Authorization = "Bearer your-token"
 
 [receiver]
-port = 9999
-host = "127.0.0.1"
+http_port = 4318
+http_enabled = true
 
 [flush]
-strategy = "invocation"
-timeout = "5s"
+strategy = "default"
+interval = 20000
+completion_wait = "auto"
+max_queue_bytes = 16777216
+max_queue_entries = 4096
 ```
 
 ## Architecture
@@ -170,23 +189,23 @@ timeout = "5s"
 ┌─────────────────────────────────────────────────────────────────────┐
 │                         Lambda Execution Environment                 │
 │                                                                      │
-│  ┌─────────────┐          OTLP/HTTP or gRPC         ┌────────────┐  │
-│  │   Lambda    │ ─────────────────────────────────▶ │  Extension │  │
-│  │  Function   │    traces, metrics, logs           │  Receiver  │  │
-│  │ (instrumented)│                                    │  :9999     │  │
-│  └─────────────┘                                    └─────┬──────┘  │
-│                                                           │         │
-│                                                           ▼         │
-│                                                    ┌────────────┐   │
-│                                                    │ Aggregator │   │
-│                                                    │  & Batcher │   │
-│                                                    └─────┬──────┘   │
-│                                                           │         │
-│  ┌─────────────┐                                         │         │
-│  │ Platform    │                                         ▼         │
-│  │ Telemetry   │ ──────────────────────────────▶ ┌────────────┐   │
-│  │ (Lambda API)│    platform metrics              │  Exporter  │   │
-│  └─────────────┘                                  │  (OTLP)    │   │
+│  ┌─────────────┐            OTLP/HTTP                ┌────────────┐ │
+│  │   Lambda    │ ──────────────────────────────────▶ │  Extension │ │
+│  │  Function   │    traces, metrics, logs            │  Receiver  │ │
+│  │(instrumented)│ ── POST /invocation/complete ────▶ │  :4318     │ │
+│  └─────────────┘    (handler wrapper)                └─────┬──────┘ │
+│                                                            │        │
+│                                                            ▼        │
+│                                                     ┌────────────┐  │
+│                                                     │ Aggregator │  │
+│                                                     │ (budgeted) │  │
+│                                                     └─────┬──────┘  │
+│                                                            │        │
+│  ┌─────────────┐                                           │        │
+│  │ Platform    │                                           ▼        │
+│  │ Telemetry   │ ──────────────────────────────▶  ┌────────────┐   │
+│  │ (Lambda API)│    platform metrics               │  Exporter  │   │
+│  └─────────────┘                                   │ (OTLP/HTTP)│   │
 │                                                    └─────┬──────┘   │
 └──────────────────────────────────────────────────────────┼──────────┘
                                                            │
@@ -202,17 +221,34 @@ timeout = "5s"
 
 The extension integrates with Lambda's execution lifecycle:
 
-1. **Init** - Extension registers, starts OTLP receiver, subscribes to platform telemetry
-2. **Invoke** - Receives signals from function, aggregates, correlates with platform data
-3. **Shutdown** - Flushes all pending signals before termination
+1. **Init** - Extension registers, starts the OTLP receiver, subscribes to platform telemetry
+2. **Invoke** - Receives signals from the function and holds its `/next` poll until the invocation completes, then flushes in the post-invocation window
+3. **Shutdown** - Flushes all pending signals within the deadline carried by the SHUTDOWN event
 
-### Freeze/Thaw Handling
+### Freeze-Safe Flushing
 
-Lambda may freeze the execution environment between invocations. The extension:
+Lambda freezes the execution environment only once the runtime has
+responded *and* every extension has re-polled `/next`. The extension
+exploits this: it delays its re-poll until the invocation is complete and
+the flush has finished, so an export can never be interrupted by a freeze
+and left dangling.
 
-- Flushes signals before freeze (after each invocation)
-- Detects thaw events and reconnects if needed
-- Uses adaptive timeouts based on remaining execution time
+Completion is detected from three sources, in order of preference:
+
+1. **Handler wrapper** (primary) - a `POST /invocation/complete` to the
+   local receiver, sent by the wrappers in [`wrappers/`](../../wrappers)
+   the moment the handler returns. This adds a few milliseconds of billed
+   duration after the response has been sent; the client's response
+   latency is unaffected.
+2. **`platform.runtimeDone`** (backup) - the Telemetry API event, which
+   can be delivered late or not at all in production.
+3. **Deadline fallback** - the hold never extends past the invocation
+   deadline (minus a safety margin). After a hold times out, holding is
+   disabled until a timely completion signal is observed again, so a
+   degraded environment pays the cost at most once.
+
+The hold window is controlled by `flush.completion_wait`
+(`auto`/`off`/cap in milliseconds).
 
 ## Instrumentation
 
@@ -220,9 +256,14 @@ Configure your Lambda function to send telemetry to the extension:
 
 ```bash
 # Point OTLP exporters at the extension
-OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:9999
-OTEL_EXPORTER_OTLP_PROTOCOL=http
+OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318
+OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
 ```
+
+For Node.js and Python functions, also set
+`AWS_LAMBDA_EXEC_WRAPPER=/opt/otel-handler` with the wrappers from
+[`wrappers/`](../../wrappers) so the extension learns the moment each
+invocation completes.
 
 ### Example with the OpenTelemetry SDK
 
@@ -265,7 +306,7 @@ The extension detects and adds Lambda resource attributes:
 
 ### Extension not receiving data
 
-1. Verify the function is sending to `http://localhost:9999`
+1. Verify the function is sending to `http://127.0.0.1:4318`
 2. Check extension logs in CloudWatch: `/aws/lambda/<function>/extension`
 3. Ensure the layer is attached to the function
 
@@ -278,8 +319,8 @@ The extension detects and adds Lambda resource attributes:
 
 ### High latency
 
-1. Consider using gRPC instead of HTTP
-2. Enable compression: `OTEL_EXPORTER_OTLP_COMPRESSION=gzip`
+1. Enable compression: `OTEL_EXPORTER_OTLP_COMPRESSION=gzip`
+2. Deploy a handler wrapper so exports run in the post-invocation window rather than alongside the next handler
 3. Tune batch settings to reduce export frequency
 
 ## Licence
