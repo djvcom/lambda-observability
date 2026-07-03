@@ -27,6 +27,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Run benchmarks
+        shell: bash
         run: >
           cargo bench -p opentelemetry-lambda-extension --
           --output-format bencher | tee bench-output.txt
@@ -79,6 +80,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Run benchmarks
+        shell: bash
         run: >
           cargo bench -p opentelemetry-lambda-extension --
           --output-format bencher | tee bench-output.txt

@@ -5,6 +5,10 @@
 //! receiver, and asserts that the wrapper invokes the original handler and
 //! posts `/invocation/complete` with the request ID. Tests skip gracefully
 //! when the interpreter is not installed.
+//!
+//! The completion timeout is raised well above its 50ms production default:
+//! on busy CI runners a cold interpreter can take longer than that to write
+//! the request, and this suite verifies signalling behaviour, not latency.
 
 use std::io::{Read, Write};
 use std::net::TcpListener;
@@ -103,6 +107,7 @@ fn nodejs_wrapper_invokes_handler_and_signals_completion() {
         .env("ORIG_HANDLER", "handler_module.handler")
         .env("LAMBDA_TASK_ROOT", task_root.path())
         .env("LAMBDA_OTEL_RECEIVER_HTTP_PORT", port.to_string())
+        .env("LAMBDA_OTEL_COMPLETION_TIMEOUT_MS", "2000")
         .output()
         .expect("Failed to run node");
 
@@ -154,6 +159,7 @@ assert result == {{"echoed": 42}}, result
         .arg(script)
         .env("ORIG_HANDLER", "handler_module.handler")
         .env("LAMBDA_OTEL_RECEIVER_HTTP_PORT", port.to_string())
+        .env("LAMBDA_OTEL_COMPLETION_TIMEOUT_MS", "2000")
         .output()
         .expect("Failed to run python3");
 

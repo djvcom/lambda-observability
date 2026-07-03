@@ -53,6 +53,7 @@ runtime. The wrapper loads and invokes the original handler unchanged.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `LAMBDA_OTEL_RECEIVER_HTTP_PORT` | `4318` | Port of the extension's local OTLP receiver |
+| `LAMBDA_OTEL_COMPLETION_TIMEOUT_MS` | `50` | Upper bound on the time spent sending the completion signal |
 
 The wrappers read the same port variable as the extension, so overriding the
 receiver port keeps both in step.

@@ -20,7 +20,7 @@ const { pathToFileURL } = require('node:url');
 
 const RECEIVER_PORT = process.env.LAMBDA_OTEL_RECEIVER_HTTP_PORT || '4318';
 const COMPLETE_URL = `http://127.0.0.1:${RECEIVER_PORT}/invocation/complete`;
-const SIGNAL_TIMEOUT_MS = 50;
+const SIGNAL_TIMEOUT_MS = Number(process.env.LAMBDA_OTEL_COMPLETION_TIMEOUT_MS) || 50;
 const HANDLER_EXTENSIONS = ['.js', '.mjs', '.cjs'];
 
 let cachedHandlerPromise;

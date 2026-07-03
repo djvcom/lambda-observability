@@ -16,9 +16,13 @@ categories = ["development-tools::profiling"]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
+[lib]
+bench = false
+
 [[bin]]
 name = "opentelemetry-lambda-extension"
 path = "src/main.rs"
+bench = false
 
 [dependencies]
 reqwest.workspace = true

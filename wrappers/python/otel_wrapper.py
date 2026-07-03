@@ -18,7 +18,7 @@ import urllib.request
 
 _RECEIVER_PORT = os.environ.get("LAMBDA_OTEL_RECEIVER_HTTP_PORT", "4318")
 _COMPLETE_URL = f"http://127.0.0.1:{_RECEIVER_PORT}/invocation/complete"
-_SIGNAL_TIMEOUT_SECONDS = 0.05
+_SIGNAL_TIMEOUT_SECONDS = float(os.environ.get("LAMBDA_OTEL_COMPLETION_TIMEOUT_MS", "50")) / 1000.0
 
 _original_handler = None
 
