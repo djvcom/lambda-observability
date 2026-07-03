@@ -9,10 +9,14 @@ use prost::Message;
 use reqwest::Client;
 use serde::Serialize;
 use std::io::Write;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 const MAX_RETRIES: u32 = 3;
 const INITIAL_BACKOFF: Duration = Duration::from_millis(50);
+
+/// Minimum useful time for an export attempt. Attempts are not started (and
+/// retries not scheduled) when less than this remains before the deadline.
+const MIN_ATTEMPT_BUDGET: Duration = Duration::from_millis(100);
 
 /// Result of an export operation.
 #[non_exhaustive]
@@ -50,6 +54,10 @@ pub enum ExportError {
     /// No endpoint configured.
     #[error("no endpoint configured")]
     NoEndpoint,
+
+    /// Export abandoned because the deadline budget was exhausted.
+    #[error("export deadline exceeded")]
+    DeadlineExceeded,
 }
 
 impl ExportError {
@@ -97,14 +105,19 @@ impl OtlpExporter {
 
     /// Exports a batch of signals.
     ///
-    /// This method handles retries and fallback to stdout on failure.
-    pub async fn export(&self, batch: BatchedSignal) -> ExportResult {
+    /// This method handles retries and fallback to stdout on failure. The
+    /// optional `deadline` bounds the total time spent, including retries:
+    /// attempts are truncated to the remaining budget and abandoned entirely
+    /// once less than a useful amount remains. Use this whenever the caller
+    /// operates inside a Lambda lifecycle window (the post-invocation hold
+    /// or the SHUTDOWN grace period).
+    pub async fn export(&self, batch: BatchedSignal, deadline: Option<Instant>) -> ExportResult {
         if self.config.endpoint.is_none() {
             tracing::debug!("No endpoint configured, skipping export");
             return ExportResult::Skipped;
         }
 
-        let result = self.export_with_retry(&batch).await;
+        let result = self.export_with_retry(&batch, deadline).await;
 
         match result {
             Ok(()) => ExportResult::Success,
@@ -116,12 +129,37 @@ impl OtlpExporter {
         }
     }
 
-    async fn export_with_retry(&self, batch: &BatchedSignal) -> Result<(), ExportError> {
+    async fn export_with_retry(
+        &self,
+        batch: &BatchedSignal,
+        deadline: Option<Instant>,
+    ) -> Result<(), ExportError> {
         let mut last_error = None;
         let mut backoff = INITIAL_BACKOFF;
 
         for attempt in 0..MAX_RETRIES {
-            match self.try_export(batch).await {
+            let attempt_timeout = match deadline {
+                Some(deadline) => {
+                    let remaining = deadline.saturating_duration_since(Instant::now());
+                    if remaining < MIN_ATTEMPT_BUDGET {
+                        tracing::warn!(
+                            attempt = attempt + 1,
+                            "Deadline budget exhausted, abandoning export"
+                        );
+                        break;
+                    }
+                    self.config.timeout.min(remaining)
+                }
+                None => self.config.timeout,
+            };
+
+            let attempt_result =
+                match tokio::time::timeout(attempt_timeout, self.try_export(batch)).await {
+                    Ok(result) => result,
+                    Err(_elapsed) => Err(ExportError::DeadlineExceeded),
+                };
+
+            match attempt_result {
                 Ok(()) => return Ok(()),
                 Err(ExportError::Status { status, ref body }) if !Self::is_retryable(status) => {
                     tracing::error!(status, "Received non-retryable status code, not retrying");
@@ -137,6 +175,12 @@ impl OtlpExporter {
                     last_error = Some(e);
 
                     if attempt + 1 < MAX_RETRIES {
+                        if let Some(deadline) = deadline
+                            && Instant::now() + backoff + MIN_ATTEMPT_BUDGET >= deadline
+                        {
+                            tracing::warn!("No budget for further retries, abandoning export");
+                            break;
+                        }
                         tokio::time::sleep(backoff).await;
                         backoff *= 2;
                     }
@@ -144,7 +188,7 @@ impl OtlpExporter {
             }
         }
 
-        Err(last_error.unwrap_or(ExportError::NoEndpoint))
+        Err(last_error.unwrap_or(ExportError::DeadlineExceeded))
     }
 
     /// Determines if a status code is retryable per OTLP specification.
@@ -309,7 +353,7 @@ mod tests {
         let exporter = OtlpExporter::with_defaults().unwrap();
         let batch = make_trace_batch();
 
-        let result = exporter.export(batch).await;
+        let result = exporter.export(batch, None).await;
         assert_eq!(result, ExportResult::Skipped);
     }
 
@@ -386,6 +430,27 @@ mod tests {
 
         assert!(err.source().is_some());
         assert!(format!("{}", err).contains("encode"));
+    }
+
+    #[tokio::test]
+    async fn test_expired_deadline_abandons_export_quickly() {
+        let config = ExporterConfig {
+            // Discard port: connections are refused, but the budget check
+            // must abandon the export before any attempt is even made.
+            endpoint: Some("http://127.0.0.1:9".to_string()),
+            ..Default::default()
+        };
+        let exporter = OtlpExporter::new(config).unwrap();
+
+        let started = Instant::now();
+        let deadline = Instant::now() - Duration::from_millis(1);
+        let result = exporter.export(make_trace_batch(), Some(deadline)).await;
+
+        assert_eq!(result, ExportResult::Fallback);
+        assert!(
+            started.elapsed() < Duration::from_millis(100),
+            "An exhausted budget must not spend time on attempts or backoff"
+        );
     }
 
     #[test]

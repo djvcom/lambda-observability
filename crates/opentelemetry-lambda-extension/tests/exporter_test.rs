@@ -46,7 +46,7 @@ async fn test_export_traces_to_mock_collector() {
     let exporter = OtlpExporter::new(config).expect("Failed to create exporter");
     let batch = make_trace_batch("test-export-span");
 
-    let result = exporter.export(batch).await;
+    let result = exporter.export(batch, None).await;
     assert_eq!(result, ExportResult::Success);
 
     server
@@ -82,7 +82,7 @@ async fn test_export_multiple_batches() {
 
     for i in 0..3 {
         let batch = make_trace_batch(&format!("batch-{}-span", i));
-        let result = exporter.export(batch).await;
+        let result = exporter.export(batch, None).await;
         assert_eq!(result, ExportResult::Success);
     }
 
@@ -125,7 +125,7 @@ async fn test_export_with_json_protocol() {
     let exporter = OtlpExporter::new(config).expect("Failed to create exporter");
     let batch = make_trace_batch("json-span");
 
-    let _result = exporter.export(batch).await;
+    let _result = exporter.export(batch, None).await;
 
     server
         .with_collector(|collector| {
@@ -144,7 +144,7 @@ async fn test_export_no_endpoint_skips() {
     let exporter = OtlpExporter::with_defaults().expect("Failed to create exporter");
     let batch = make_trace_batch("skipped-span");
 
-    let result = exporter.export(batch).await;
+    let result = exporter.export(batch, None).await;
     assert_eq!(result, ExportResult::Skipped);
 }
 
@@ -160,6 +160,6 @@ async fn test_export_to_unreachable_endpoint_falls_back() {
     let exporter = OtlpExporter::new(config).expect("Failed to create exporter");
     let batch = make_trace_batch("fallback-span");
 
-    let result = exporter.export(batch).await;
+    let result = exporter.export(batch, None).await;
     assert_eq!(result, ExportResult::Fallback);
 }

@@ -32,6 +32,14 @@ use tower::Service;
 /// `/next`, leaving room for the flush itself before the function times out.
 const HOLD_DEADLINE_MARGIN: Duration = Duration::from_secs(1);
 
+/// Budget granted to each flush in the invocation path. This is the margin
+/// reserved by [`HOLD_DEADLINE_MARGIN`]: the hold releases early enough
+/// that the flush can spend this long. The budget is measured from when the
+/// flush starts, not from the invocation deadline — the deadline bounds the
+/// runtime's handler, not the extension, and the environment stays thawed
+/// while the INVOKE handler is still running.
+const INVOKE_FLUSH_BUDGET: Duration = HOLD_DEADLINE_MARGIN;
+
 /// Grace period after a completion signal for signals already accepted by
 /// the receiver to reach the aggregator before the post-invoke flush reads it.
 const COMPLETION_SETTLE_DELAY: Duration = Duration::from_millis(20);
@@ -64,6 +72,23 @@ fn hold_deadline(deadline_ms: u64, completion_wait: CompletionWait) -> Option<In
         None => remaining,
     };
     Some(Instant::now() + hold)
+}
+
+/// Safety margin subtracted from the SHUTDOWN deadline, leaving room to
+/// signal completion and exit before Lambda sends SIGKILL.
+const SHUTDOWN_DEADLINE_MARGIN: Duration = Duration::from_millis(200);
+
+/// Converts the epoch-millisecond deadline from a SHUTDOWN event into the
+/// instant by which all shutdown work must finish.
+fn shutdown_deadline(deadline_ms: u64) -> Instant {
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64;
+
+    let remaining = Duration::from_millis(deadline_ms.saturating_sub(now_ms))
+        .saturating_sub(SHUTDOWN_DEADLINE_MARGIN);
+    Instant::now() + remaining
 }
 
 /// Shared state for extension services.
@@ -129,12 +154,15 @@ impl ExtensionState {
     }
 
     /// Performs a flush of all pending signals to the exporter.
-    pub async fn flush_all(&self) {
+    ///
+    /// The optional `deadline` bounds the total time spent exporting; see
+    /// [`OtlpExporter::export`].
+    pub async fn flush_all(&self, deadline: Option<Instant>) {
         let batches = self.aggregator.get_all_batches().await;
         let mut flush_manager = self.flush_manager.lock().await;
 
         for batch in batches {
-            let result = self.exporter.export(batch).await;
+            let result = self.exporter.export(batch, deadline).await;
             match result {
                 crate::exporter::ExportResult::Success => {
                     flush_manager.record_flush();
@@ -189,7 +217,7 @@ impl ExtensionState {
                     };
                     if should_flush {
                         tracing::debug!(pending, "Periodic flush during held invocation");
-                        self.flush_all().await;
+                        self.flush_all(Some(Instant::now() + INVOKE_FLUSH_BUDGET)).await;
                     }
                 }
             }
@@ -217,7 +245,7 @@ impl ExtensionState {
     }
 
     /// Flushes pending signals in the post-invocation window when the flush
-    /// strategy calls for it.
+    /// strategy calls for it, within the invoke-path flush budget.
     pub async fn post_invoke_flush(&self) {
         let pending = self.aggregator.pending_count().await;
         if pending == 0 {
@@ -234,7 +262,8 @@ impl ExtensionState {
 
         if should_flush {
             tracing::debug!(pending, "Flushing in post-invocation window");
-            self.flush_all().await;
+            self.flush_all(Some(Instant::now() + INVOKE_FLUSH_BUDGET))
+                .await;
         }
     }
 
@@ -254,16 +283,45 @@ impl ExtensionState {
         // Lock is immediately dropped, we just needed to wait for it
     }
 
-    /// Performs a final flush draining all signals.
-    pub async fn final_flush(&self) {
+    /// Performs a final flush draining all signals, bounded by `deadline`.
+    ///
+    /// Signals are drained in batch-sized chunks rather than one merged
+    /// request, so a large backlog neither spikes memory during encoding
+    /// nor turns into a single all-or-nothing export. Once the deadline is
+    /// reached, remaining batches are abandoned and their counts logged —
+    /// exceeding the SHUTDOWN grace period would mean SIGKILL mid-export
+    /// and silently lost telemetry anyway.
+    pub async fn final_flush(&self, deadline: Instant) {
         tracing::info!("Performing final flush");
 
-        let batches = self.aggregator.drain_all().await;
-        let count = batches.len();
+        let mut exported = 0usize;
+        let mut abandoned_batches = 0usize;
 
-        for batch in batches {
-            let result = self.exporter.export(batch).await;
-            tracing::debug!(?result, "Final flush batch");
+        'drain: loop {
+            let batches = self.aggregator.get_all_batches().await;
+            if batches.is_empty() {
+                break;
+            }
+
+            let mut batches = batches.into_iter();
+            while let Some(batch) = batches.next() {
+                if Instant::now() >= deadline {
+                    abandoned_batches += 1 + batches.len();
+                    break 'drain;
+                }
+                let result = self.exporter.export(batch, Some(deadline)).await;
+                tracing::debug!(?result, "Final flush batch");
+                exported += 1;
+            }
+        }
+
+        let pending_signals = self.aggregator.pending_count().await;
+        if abandoned_batches > 0 || pending_signals > 0 {
+            tracing::warn!(
+                abandoned_batches,
+                pending_signals,
+                "Final flush deadline reached with telemetry still pending"
+            );
         }
 
         let dropped = self.aggregator.dropped_count().await;
@@ -274,7 +332,12 @@ impl ExtensionState {
             );
         }
 
-        tracing::info!(batches = count, dropped = dropped, "Final flush complete");
+        tracing::info!(
+            batches = exported,
+            abandoned_batches,
+            dropped,
+            "Final flush complete"
+        );
     }
 }
 
@@ -344,12 +407,17 @@ impl Service<LambdaEvent> for EventsService {
                 NextEvent::Shutdown(shutdown) => {
                     tracing::info!(reason = ?shutdown.shutdown_reason, "Received SHUTDOWN event");
 
+                    // Budget everything against the deadline in the SHUTDOWN
+                    // event: exceeding it means SIGKILL, so work that cannot
+                    // finish in time must be abandoned deliberately instead.
+                    let deadline = shutdown_deadline(shutdown.deadline_ms);
+                    let remaining = deadline.saturating_duration_since(Instant::now());
+
                     // Wait for any in-flight telemetry processing to complete
-                    // This ensures we don't flush before the last batch of telemetry
-                    // (e.g., platform.report) has been processed and added to the aggregator
-                    state
-                        .wait_for_processing_complete(Duration::from_millis(500))
-                        .await;
+                    // (e.g. platform.report still being added to the
+                    // aggregator), but spend at most a quarter of the budget.
+                    let processing_wait = (remaining / 4).min(Duration::from_millis(500));
+                    state.wait_for_processing_complete(processing_wait).await;
 
                     // Emit shutdown metric
                     let shutdown_reason = format!("{:?}", shutdown.shutdown_reason);
@@ -358,8 +426,8 @@ impl Service<LambdaEvent> for EventsService {
                         .create_shutdown_metric(&shutdown_reason);
                     state.aggregator.add(Signal::Metrics(shutdown_metric)).await;
 
-                    // Final flush of all signals
-                    state.final_flush().await;
+                    // Final flush of all signals within the remaining budget
+                    state.final_flush(deadline).await;
 
                     // Signal shutdown complete to exit the event loop gracefully
                     state.signal_shutdown_complete().await;
