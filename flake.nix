@@ -41,6 +41,10 @@
             openssl
             pkg-config
 
+            # Handler wrapper runtimes (wrappers/ smoke tests)
+            nodejs
+            python3
+
             # Nix tooling
             nixfmt-rfc-style
             statix

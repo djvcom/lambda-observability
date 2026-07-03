@@ -4,3 +4,4 @@
 
 # direnv
 .direnv/
+__pycache__/
