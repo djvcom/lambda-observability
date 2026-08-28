@@ -2,7 +2,9 @@
 
 use opentelemetry_sdk::logs::SdkLoggerProvider;
 use opentelemetry_sdk::trace::SdkTracerProvider;
-use opentelemetry_semantic_conventions::attribute::{ERROR_MESSAGE, OTEL_STATUS_CODE};
+use opentelemetry_semantic_conventions::attribute::OTEL_STATUS_CODE;
+
+const ERROR_MESSAGE: &str = "error.message";
 use pin_project::pin_project;
 use std::future::Future;
 use std::pin::Pin;

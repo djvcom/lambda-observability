@@ -11,10 +11,10 @@ license = "MIT"
 axum = "0.8"
 chrono = { version = "0.4", features = ["serde"] }
 lambda_runtime = "1.2"
-opentelemetry = "0.31"
-opentelemetry_sdk = { version = "0.31", features = ["rt-tokio"] }
+opentelemetry = "0.32"
+opentelemetry_sdk = { version = "0.32", features = ["rt-tokio"] }
 opentelemetry-otlp = { version = "0.32", default-features = false, features = ["grpc-tonic", "http-proto", "reqwest-blocking-client", "trace", "logs", "metrics"] }
-opentelemetry-proto = { version = "0.31", features = ["gen-tonic-messages", "with-serde", "trace"] }
+opentelemetry-proto = { version = "0.32", features = ["gen-tonic-messages", "with-serde", "trace"] }
 reqwest = { version = "0.13", features = ["json"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
@@ -22,12 +22,12 @@ temp-env = { version = "0.3", features = ["async_closure"] }
 thiserror = "2.0"
 tokio = { version = "1.52", features = ["macros", "rt-multi-thread", "sync", "time", "net"] }
 tracing = "0.1"
-tracing-opentelemetry = "0.32"
+tracing-opentelemetry = "0.33"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid = { version = "1.23", features = ["v4", "serde"] }
 
 lambda-simulator = { version = "0.1.6", path = "crates/lambda-simulator" }
-opentelemetry-configuration = "0.3.2"
+opentelemetry-configuration = "0.4.0"
 opentelemetry-lambda-example = { path = "crates/opentelemetry-lambda-example" }
 opentelemetry-lambda-tower = { version = "0.1.6", path = "crates/opentelemetry-lambda-tower" }
 
