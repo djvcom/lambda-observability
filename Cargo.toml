@@ -46,6 +46,13 @@ serde_json.workspace = true
 temp-env.workspace = true
 tokio.workspace = true
 
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+opt-level = 0
+
 [profile.release]
 lto = true
 codegen-units = 1
