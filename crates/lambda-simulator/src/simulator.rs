@@ -673,6 +673,19 @@ impl Simulator {
         self.extension_state.extension_count().await
     }
 
+    /// Gets the time of an extension's first `/next` poll, if it has
+    /// polled at all.
+    ///
+    /// Compared with [`RegisteredExtension::registered_at`] and the time
+    /// the extension process was spawned, this gives the extension's
+    /// start-up timings: spawn to register and spawn to first `/next`.
+    pub async fn first_next_poll_at(
+        &self,
+        extension_id: &str,
+    ) -> Option<chrono::DateTime<chrono::Utc>> {
+        self.extension_state.first_next_poll_at(extension_id).await
+    }
+
     /// Shuts down the simulator immediately without waiting for extensions.
     ///
     /// This will unfreeze any frozen process, abort the HTTP server,

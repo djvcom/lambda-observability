@@ -173,6 +173,11 @@ pub struct ExtensionState {
     /// extension. Used to distinguish a `/next` poll that signals readiness
     /// after processing an invocation from the poll that delivers it.
     delivered_invokes: Mutex<HashMap<ExtensionId, String>>,
+
+    /// Timestamp of each extension's first `/next` poll. During INIT this
+    /// marks the point at which the extension signalled it was ready, so
+    /// it can be compared against `registered_at` for start-up timing.
+    first_next_polls: Mutex<HashMap<ExtensionId, DateTime<Utc>>>,
 }
 
 impl ExtensionState {
@@ -185,6 +190,7 @@ impl ExtensionState {
             shutdown_acknowledged: Mutex::new(std::collections::HashSet::new()),
             shutdown_notify: Notify::new(),
             delivered_invokes: Mutex::new(HashMap::new()),
+            first_next_polls: Mutex::new(HashMap::new()),
         }
     }
 
@@ -277,6 +283,26 @@ impl ExtensionState {
             drop(notifiers);
             notifier.notified().await;
         }
+    }
+
+    /// Records that an extension has polled `/next`, keeping only the time
+    /// of the first poll.
+    pub async fn record_next_poll(&self, extension_id: &str) {
+        self.first_next_polls
+            .lock()
+            .await
+            .entry(extension_id.to_string())
+            .or_insert_with(Utc::now);
+    }
+
+    /// Returns the time of an extension's first `/next` poll, if it has
+    /// polled at all.
+    pub async fn first_next_poll_at(&self, extension_id: &str) -> Option<DateTime<Utc>> {
+        self.first_next_polls
+            .lock()
+            .await
+            .get(extension_id)
+            .copied()
     }
 
     /// Returns the request ID of the most recent INVOKE event delivered to
