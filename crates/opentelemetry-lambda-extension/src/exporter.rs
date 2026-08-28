@@ -10,6 +10,7 @@ use reqwest::Client;
 use serde::Serialize;
 use std::io::Write;
 use std::time::{Duration, Instant};
+use tokio::sync::OnceCell;
 
 const MAX_RETRIES: u32 = 3;
 const INITIAL_BACKOFF: Duration = Duration::from_millis(50);
@@ -88,9 +89,13 @@ impl ExportError {
 }
 
 /// OTLP exporter for sending signals to a remote endpoint.
+///
+/// The HTTP client is built lazily on the first export attempt. Client
+/// construction loads TLS material, which is needlessly expensive during the
+/// extension's INIT phase and pointless when no endpoint is configured.
 pub struct OtlpExporter {
     config: ExporterConfig,
-    client: Client,
+    client: OnceCell<Client>,
 }
 
 impl OtlpExporter {
@@ -100,28 +105,39 @@ impl OtlpExporter {
     ///
     /// Returns [`ExportError::UnsupportedProtocol`] when the configuration
     /// selects a protocol other than HTTP/protobuf, so a misconfiguration
-    /// fails fast at startup instead of silently losing telemetry. Also
-    /// returns an error if the HTTP client cannot be created.
+    /// fails fast at startup instead of silently losing telemetry.
     pub fn new(config: ExporterConfig) -> Result<Self, ExportError> {
         if config.protocol != Protocol::Http {
             return Err(ExportError::UnsupportedProtocol(config.protocol));
         }
 
-        let client = Client::builder()
-            .timeout(config.timeout)
-            .build()
-            .map_err(ExportError::Http)?;
-
-        Ok(Self { config, client })
+        Ok(Self {
+            config,
+            client: OnceCell::new(),
+        })
     }
 
     /// Creates a new exporter with default configuration.
     ///
     /// # Errors
     ///
-    /// Returns an error if the HTTP client cannot be created.
+    /// Returns an error if the configuration selects an unsupported protocol.
     pub fn with_defaults() -> Result<Self, ExportError> {
         Self::new(ExporterConfig::default())
+    }
+
+    /// Returns the HTTP client, building it on first use.
+    ///
+    /// A failed build is not cached, so a later export retries construction.
+    async fn client(&self) -> Result<&Client, ExportError> {
+        self.client
+            .get_or_try_init(|| async {
+                Client::builder()
+                    .timeout(self.config.timeout)
+                    .build()
+                    .map_err(ExportError::Http)
+            })
+            .await
     }
 
     /// Exports a batch of signals.
@@ -244,7 +260,8 @@ impl OtlpExporter {
         let url = format!("{}{}", endpoint, path);
 
         let mut request = self
-            .client
+            .client()
+            .await?
             .post(&url)
             .header("Content-Type", content_type)
             .body(body);
