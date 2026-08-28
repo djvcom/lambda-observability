@@ -2,6 +2,10 @@
 
 use std::time::{Duration, Instant};
 
+/// Boxed-error result type for test helpers, so they compose with `?`
+/// against reqwest, serde, and IO errors without lossy string conversion.
+pub type TestResult<T = ()> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
+
 /// Reads the process state character from /proc on Linux or uses ps on macOS.
 ///
 /// Returns the single-character state code:
@@ -51,14 +55,14 @@ pub fn truncate_id(id: &str, max_len: usize) -> &str {
     id.get(..max_len).unwrap_or(id)
 }
 
-pub async fn wait_for_http_ready(port: u16, timeout: Duration) -> Result<(), String> {
+pub async fn wait_for_http_ready(port: u16, timeout: Duration) -> TestResult {
     let deadline = Instant::now() + timeout;
     let url = format!("http://127.0.0.1:{}/health", port);
 
+    lambda_simulator::ensure_default_crypto_provider();
     let client = reqwest::Client::builder()
         .timeout(Duration::from_millis(100))
-        .build()
-        .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
+        .build()?;
 
     while Instant::now() < deadline {
         match client.get(&url).send().await {
@@ -74,5 +78,6 @@ pub async fn wait_for_http_ready(port: u16, timeout: Duration) -> Result<(), Str
     Err(format!(
         "HTTP server health check timed out after {:?} on port {}",
         timeout, port
-    ))
+    )
+    .into())
 }

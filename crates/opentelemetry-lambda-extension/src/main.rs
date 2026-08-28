@@ -18,21 +18,17 @@
 //!
 //! See the crate documentation for full configuration options.
 
-use anyhow::{Context, Result};
-use opentelemetry_lambda_extension::{Config, ExtensionRuntime};
+use opentelemetry_lambda_extension::{Config, ExtensionRuntime, Result};
 use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
-#[tokio::main]
+#[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
-    init_tracing().context("failed to initialise tracing subscriber")?;
+    init_tracing()?;
 
-    let config = Config::load().context("failed to load configuration")?;
+    let config = Config::load()?;
     tracing::debug!(?config, "Configuration loaded");
 
-    ExtensionRuntime::new(config)
-        .run()
-        .await
-        .context("extension runtime failed")?;
+    ExtensionRuntime::new(config).run().await?;
 
     Ok(())
 }
@@ -43,8 +39,7 @@ fn init_tracing() -> Result<()> {
     tracing_subscriber::registry()
         .with(fmt::layer().with_target(true).without_time())
         .with(filter)
-        .try_init()
-        .context("failed to initialise tracing registry")?;
+        .try_init()?;
 
     Ok(())
 }

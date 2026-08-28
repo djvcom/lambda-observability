@@ -16,13 +16,17 @@ categories = ["development-tools::testing", "simulation"]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
+[lints]
+workspace = true
+
 [dependencies]
 axum.workspace = true
 chrono.workspace = true
 http-body = "1.0"
 nix = { version = "0.31", features = ["signal", "process"] }
 pin-project-lite = "0.2"
-reqwest = { workspace = true, features = ["blocking"] }
+reqwest = { workspace = true, features = ["blocking", "json"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

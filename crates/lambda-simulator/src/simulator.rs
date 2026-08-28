@@ -416,16 +416,14 @@ impl SimulatorBuilder {
 
         let listener = TcpListener::bind(addr)
             .await
-            .map_err(|e| SimulatorError::BindError(e.to_string()))?;
+            .map_err(SimulatorError::BindError)?;
 
-        let local_addr = listener
-            .local_addr()
-            .map_err(|e| SimulatorError::ServerStart(e.to_string()))?;
+        let local_addr = listener.local_addr().map_err(SimulatorError::ServerStart)?;
 
         let server_handle = tokio::spawn(async move {
             axum::serve(listener, combined_router)
                 .await
-                .map_err(|e| SimulatorError::ServerStart(e.to_string()))
+                .map_err(SimulatorError::ServerStart)
         });
 
         // Emit platform.initStart telemetry event
@@ -673,6 +671,19 @@ impl Simulator {
     /// Gets the number of registered extensions.
     pub async fn extension_count(&self) -> usize {
         self.extension_state.extension_count().await
+    }
+
+    /// Gets the time of an extension's first `/next` poll, if it has
+    /// polled at all.
+    ///
+    /// Compared with [`RegisteredExtension::registered_at`] and the time
+    /// the extension process was spawned, this gives the extension's
+    /// start-up timings: spawn to register and spawn to first `/next`.
+    pub async fn first_next_poll_at(
+        &self,
+        extension_id: &str,
+    ) -> Option<chrono::DateTime<chrono::Utc>> {
+        self.extension_state.first_next_poll_at(extension_id).await
     }
 
     /// Shuts down the simulator immediately without waiting for extensions.

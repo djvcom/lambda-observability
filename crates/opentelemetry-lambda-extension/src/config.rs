@@ -99,9 +99,9 @@ impl Config {
     ///
     /// # Errors
     ///
-    /// Returns an error if configuration parsing fails.
-    #[allow(clippy::result_large_err)]
-    pub fn load() -> Result<Self, figment::Error> {
+    /// Returns [`ExtensionError::Config`](crate::ExtensionError::Config) if
+    /// configuration parsing fails.
+    pub fn load() -> crate::error::Result<Self> {
         Self::load_from_path(DEFAULT_CONFIG_PATH)
     }
 
@@ -109,9 +109,9 @@ impl Config {
     ///
     /// # Errors
     ///
-    /// Returns an error if configuration parsing fails.
-    #[allow(clippy::result_large_err)]
-    pub fn load_from_path<P: AsRef<Path>>(config_path: P) -> Result<Self, figment::Error> {
+    /// Returns [`ExtensionError::Config`](crate::ExtensionError::Config) if
+    /// configuration parsing fails.
+    pub fn load_from_path<P: AsRef<Path>>(config_path: P) -> crate::error::Result<Self> {
         let mut figment = Figment::from(Serialized::defaults(Config::default()));
 
         if config_path.as_ref().exists() {
@@ -121,7 +121,7 @@ impl Config {
         figment = figment.merge(standard_otel_env());
         figment = figment.merge(prefixed_env());
 
-        figment.extract()
+        Ok(figment.extract()?)
     }
 
     /// Creates a new config builder for testing.

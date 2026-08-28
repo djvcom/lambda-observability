@@ -10,6 +10,9 @@ repository = "https://github.com/djvcom/lambda-observability"
 readme = "README.md"
 publish = false
 
+[lints]
+workspace = true
+
 [dependencies]
 lambda_runtime.workspace = true
 serde.workspace = true
@@ -25,6 +28,7 @@ tower = "0.5"
 tracing-opentelemetry.workspace = true
 tracing-subscriber.workspace = true
 opentelemetry-configuration.workspace = true
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
 
 [dev-dependencies]
 lambda-simulator.workspace = true

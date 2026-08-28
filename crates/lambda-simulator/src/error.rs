@@ -6,12 +6,12 @@ use thiserror::Error;
 #[derive(Error, Debug)]
 pub enum SimulatorError {
     /// Error starting the HTTP server.
-    #[error("Failed to start server: {0}")]
-    ServerStart(String),
+    #[error("Failed to start server")]
+    ServerStart(#[source] std::io::Error),
 
     /// Error binding to the specified address.
-    #[error("Failed to bind to address: {0}")]
-    BindError(String),
+    #[error("Failed to bind to address")]
+    BindError(#[source] std::io::Error),
 
     /// Invalid configuration provided.
     #[error("Invalid configuration: {0}")]

@@ -7,6 +7,14 @@ edition = "2024"
 rust-version = "1.92"
 license = "MIT"
 
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+
+[workspace.lints.clippy]
+dbg_macro = "warn"
+todo = "warn"
+
 [workspace.dependencies]
 axum = "0.8"
 chrono = { version = "0.4", features = ["serde"] }
@@ -15,7 +23,7 @@ opentelemetry = "0.32"
 opentelemetry_sdk = { version = "0.32", features = ["rt-tokio"] }
 opentelemetry-otlp = { version = "0.32", default-features = false, features = ["grpc-tonic", "http-proto", "reqwest-blocking-client", "trace", "logs", "metrics"] }
 opentelemetry-proto = { version = "0.32", features = ["gen-tonic-messages", "with-serde", "trace"] }
-reqwest = { version = "0.13", features = ["json"] }
+reqwest = { version = "0.13", default-features = false }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 temp-env = { version = "0.3", features = ["async_closure"] }
@@ -37,14 +45,24 @@ version = "0.1.0"
 edition.workspace = true
 publish = false
 
+[lints]
+workspace = true
+
 [dev-dependencies]
 lambda_runtime.workspace = true
 lambda-simulator.workspace = true
 opentelemetry-lambda-example.workspace = true
-reqwest.workspace = true
+reqwest = { workspace = true, features = ["json"] }
 serde_json.workspace = true
 temp-env.workspace = true
 tokio.workspace = true
+
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+opt-level = 0
 
 [profile.release]
 lto = true

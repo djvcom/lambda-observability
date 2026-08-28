@@ -670,48 +670,50 @@ async fn test_simulator_shutdown_triggers_extension_shutdown() {
         ..Default::default()
     };
 
-    // Set environment variable for lambda_extension crate before spawning
-    // The lambda_extension crate expects the full URL with http:// prefix
-    // SAFETY: Test runs serially so no other code is reading environment concurrently
-    let extension_runtime_api = runtime_api_base.clone();
-    unsafe {
-        std::env::set_var(
+    let extension_runtime_api = format!("http://{}", runtime_api_base);
+
+    // The extension re-resolves AWS_LAMBDA_RUNTIME_API whenever it builds an
+    // API client, which can happen at any point in its lifetime, so the scope
+    // covers the whole test.
+    temp_env::async_with_vars(
+        [(
             "AWS_LAMBDA_RUNTIME_API",
-            format!("http://{}", extension_runtime_api),
-        );
-    }
+            Some(extension_runtime_api.as_str()),
+        )],
+        async {
+            let extension_handle = tokio::spawn(async move {
+                let runtime = RuntimeBuilder::new().config(config).build();
+                runtime.run().await
+            });
 
-    let extension_handle = tokio::spawn(async move {
-        let runtime = RuntimeBuilder::new().config(config).build();
-        runtime.run().await
-    });
+            simulator
+                .wait_for(
+                    || async { simulator.extension_count().await >= 1 },
+                    Duration::from_secs(5),
+                )
+                .await
+                .expect("Extension did not register");
 
-    // Wait for extension to register
-    simulator
-        .wait_for(
-            || async { simulator.extension_count().await >= 1 },
-            Duration::from_secs(5),
-        )
-        .await
-        .expect("Extension did not register");
+            // Verify extension registered
+            let extensions = simulator.get_registered_extensions().await;
+            assert!(!extensions.is_empty(), "Should have registered extension");
 
-    // Verify extension registered
-    let extensions = simulator.get_registered_extensions().await;
-    assert!(!extensions.is_empty(), "Should have registered extension");
+            // Trigger graceful shutdown
+            simulator.graceful_shutdown(ShutdownReason::Spindown).await;
 
-    // Trigger graceful shutdown
-    simulator.graceful_shutdown(ShutdownReason::Spindown).await;
+            // Extension should receive SHUTDOWN event and exit cleanly
+            let result = tokio::time::timeout(Duration::from_secs(5), extension_handle)
+                .await
+                .expect("Extension should exit within timeout");
 
-    // Extension should receive SHUTDOWN event and exit cleanly
-    let result = tokio::time::timeout(Duration::from_secs(5), extension_handle)
-        .await
-        .expect("Extension should exit within timeout");
-
-    assert!(
-        result.is_ok(),
-        "Extension should exit cleanly after shutdown: {:?}",
-        result
-    );
+            assert!(
+                result.is_ok(),
+                "Extension should exit cleanly after shutdown: {:?}",
+                result
+            );
+        },
+    )
+    .await;
 
     collector
         .shutdown()

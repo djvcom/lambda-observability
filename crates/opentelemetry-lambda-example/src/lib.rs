@@ -40,9 +40,6 @@
 //! }
 //! ```
 
-#![forbid(unsafe_code)]
-#![warn(missing_docs)]
-
 use aws_lambda_events::apigw::ApiGatewayV2httpRequest;
 use aws_lambda_events::sqs::SqsEvent;
 use lambda_runtime::LambdaEvent;
@@ -118,6 +115,10 @@ pub struct BatchItemFailure {
 /// 2. Optional config file at `/var/task/otel-config.toml`
 /// 3. Environment variables with `OTEL_` prefix
 ///
+/// The `ring` crypto provider is installed as the process default first,
+/// so that the exporter's HTTP client can be constructed even when the
+/// build resolves reqwest with a rustls backend and no default provider.
+///
 /// # Errors
 ///
 /// Returns an error if the SDK fails to initialise.
@@ -129,6 +130,8 @@ pub struct BatchItemFailure {
 /// // guard manages lifecycle - flush and shutdown on drop
 /// ```
 pub fn init_telemetry() -> Result<OtelGuard, SdkError> {
+    let _ = rustls::crypto::ring::default_provider().install_default();
+
     OtelSdkBuilder::new()
         .with_file("/var/task/otel-config.toml")
         .with_standard_env()
