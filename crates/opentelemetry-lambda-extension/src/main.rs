@@ -21,7 +21,7 @@
 use opentelemetry_lambda_extension::{Config, ExtensionRuntime, Result};
 use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
-#[tokio::main]
+#[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
     init_tracing()?;
 
