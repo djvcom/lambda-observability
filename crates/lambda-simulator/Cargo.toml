@@ -16,6 +16,9 @@ categories = ["development-tools::testing", "simulation"]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
+[lints]
+workspace = true
+
 [dependencies]
 axum.workspace = true
 chrono.workspace = true

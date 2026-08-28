@@ -16,6 +16,9 @@ categories = ["development-tools::profiling", "web-programming"]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
+[lints]
+workspace = true
+
 [dependencies]
 # Tower middleware
 tower = "0.5"

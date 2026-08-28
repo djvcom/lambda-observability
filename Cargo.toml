@@ -7,6 +7,14 @@ edition = "2024"
 rust-version = "1.92"
 license = "MIT"
 
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+
+[workspace.lints.clippy]
+dbg_macro = "warn"
+todo = "warn"
+
 [workspace.dependencies]
 axum = "0.8"
 chrono = { version = "0.4", features = ["serde"] }
@@ -36,6 +44,9 @@ name = "lambda-observability"
 version = "0.1.0"
 edition.workspace = true
 publish = false
+
+[lints]
+workspace = true
 
 [dev-dependencies]
 lambda_runtime.workspace = true

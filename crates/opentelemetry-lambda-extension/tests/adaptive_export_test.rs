@@ -670,30 +670,30 @@ async fn test_simulator_shutdown_triggers_extension_shutdown() {
         ..Default::default()
     };
 
-    // Set environment variable for lambda_extension crate before spawning
-    // The lambda_extension crate expects the full URL with http:// prefix
-    // SAFETY: Test runs serially so no other code is reading environment concurrently
-    let extension_runtime_api = runtime_api_base.clone();
-    unsafe {
-        std::env::set_var(
-            "AWS_LAMBDA_RUNTIME_API",
-            format!("http://{}", extension_runtime_api),
-        );
-    }
+    let extension_runtime_api = format!("http://{}", runtime_api_base);
 
-    let extension_handle = tokio::spawn(async move {
-        let runtime = RuntimeBuilder::new().config(config).build();
-        runtime.run().await
-    });
+    // The variable only needs to be set while the lambda_extension client is
+    // constructed, which has happened once registration is observed.
+    let extension_handle = temp_env::async_with_vars(
+        [("AWS_LAMBDA_RUNTIME_API", Some(extension_runtime_api))],
+        async {
+            let handle = tokio::spawn(async move {
+                let runtime = RuntimeBuilder::new().config(config).build();
+                runtime.run().await
+            });
 
-    // Wait for extension to register
-    simulator
-        .wait_for(
-            || async { simulator.extension_count().await >= 1 },
-            Duration::from_secs(5),
-        )
-        .await
-        .expect("Extension did not register");
+            simulator
+                .wait_for(
+                    || async { simulator.extension_count().await >= 1 },
+                    Duration::from_secs(5),
+                )
+                .await
+                .expect("Extension did not register");
+
+            handle
+        },
+    )
+    .await;
 
     // Verify extension registered
     let extensions = simulator.get_registered_extensions().await;

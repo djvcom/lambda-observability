@@ -101,43 +101,36 @@ async fn test_e2e_trace_propagation_and_platform_telemetry() {
         ..Default::default()
     };
 
-    let extension_runtime_api = runtime_api_base.clone();
+    let extension_runtime_api = format!("http://{}", runtime_api_base);
 
-    // Set environment variable for lambda_extension crate before spawning
-    // The #[serial] attribute ensures this test runs in isolation
-    // The lambda_extension crate expects the full URL with http:// prefix
-    // SAFETY: Test runs serially so no other code is reading environment concurrently
-    unsafe {
-        std::env::set_var(
-            "AWS_LAMBDA_RUNTIME_API",
-            format!("http://{}", extension_runtime_api),
-        );
-    }
+    // The variable only needs to be set while the lambda_extension client is
+    // constructed, which has happened once registration is observed.
+    let extension_handle = async_with_vars(
+        [("AWS_LAMBDA_RUNTIME_API", Some(extension_runtime_api))],
+        async {
+            let handle = tokio::spawn(async move {
+                tracing::debug!("Starting extension runtime");
+                let runtime = RuntimeBuilder::new().config(extension_config).build();
 
-    let extension_handle = tokio::spawn(async move {
-        tracing::debug!("Starting extension runtime");
-        tracing::debug!(
-            runtime_api =
-                std::env::var("AWS_LAMBDA_RUNTIME_API").unwrap_or_else(|_| "NOT SET".to_string()),
-            "Environment check"
-        );
-        let runtime = RuntimeBuilder::new().config(extension_config).build();
+                tracing::debug!("Calling runtime.run()");
+                if let Err(e) = runtime.run().await {
+                    tracing::error!(error = ?e, "Extension error");
+                }
+                tracing::debug!("Extension runtime finished");
+            });
 
-        tracing::debug!("Calling runtime.run()");
-        if let Err(e) = runtime.run().await {
-            tracing::error!(error = ?e, "Extension error");
-        }
-        tracing::debug!("Extension runtime finished");
-    });
+            simulator
+                .wait_for(
+                    || async { simulator.extension_count().await >= 1 },
+                    Duration::from_secs(5),
+                )
+                .await
+                .expect("Extension did not register in time");
 
-    // Wait for extension to register
-    simulator
-        .wait_for(
-            || async { simulator.extension_count().await >= 1 },
-            Duration::from_secs(5),
-        )
-        .await
-        .expect("Extension did not register in time");
+            handle
+        },
+    )
+    .await;
 
     let extensions = simulator.get_registered_extensions().await;
     println!(
@@ -489,29 +482,30 @@ async fn test_e2e_missing_traceparent_creates_new_trace() {
         ..Default::default()
     };
 
-    // Set environment variable for lambda_extension crate before spawning
-    // The lambda_extension crate expects the full URL with http:// prefix
-    // SAFETY: Test runs serially so no other code is reading environment concurrently
-    let extension_runtime_api = runtime_api_base.clone();
-    unsafe {
-        std::env::set_var(
-            "AWS_LAMBDA_RUNTIME_API",
-            format!("http://{}", extension_runtime_api),
-        );
-    }
+    let extension_runtime_api = format!("http://{}", runtime_api_base);
 
-    let extension_handle = tokio::spawn(async move {
-        let runtime = RuntimeBuilder::new().config(extension_config).build();
-        let _ = runtime.run().await;
-    });
+    // The variable only needs to be set while the lambda_extension client is
+    // constructed, which has happened once registration is observed.
+    let extension_handle = async_with_vars(
+        [("AWS_LAMBDA_RUNTIME_API", Some(extension_runtime_api))],
+        async {
+            let handle = tokio::spawn(async move {
+                let runtime = RuntimeBuilder::new().config(extension_config).build();
+                let _ = runtime.run().await;
+            });
 
-    simulator
-        .wait_for(
-            || async { simulator.extension_count().await >= 1 },
-            Duration::from_secs(5),
-        )
-        .await
-        .expect("Extension did not register");
+            simulator
+                .wait_for(
+                    || async { simulator.extension_count().await >= 1 },
+                    Duration::from_secs(5),
+                )
+                .await
+                .expect("Extension did not register");
+
+            handle
+        },
+    )
+    .await;
 
     // Wait for OTLP receiver to be ready
     wait_for_http_ready(TEST_OTLP_PORT, Duration::from_secs(5))

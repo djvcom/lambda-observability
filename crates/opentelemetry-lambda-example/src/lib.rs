@@ -40,9 +40,6 @@
 //! }
 //! ```
 
-#![forbid(unsafe_code)]
-#![warn(missing_docs)]
-
 use aws_lambda_events::apigw::ApiGatewayV2httpRequest;
 use aws_lambda_events::sqs::SqsEvent;
 use lambda_runtime::LambdaEvent;

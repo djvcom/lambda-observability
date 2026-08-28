@@ -10,6 +10,9 @@ repository = "https://github.com/djvcom/lambda-observability"
 readme = "README.md"
 publish = false
 
+[lints]
+workspace = true
+
 [dependencies]
 lambda_runtime.workspace = true
 serde.workspace = true
