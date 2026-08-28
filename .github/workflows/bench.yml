@@ -26,6 +26,9 @@ jobs:
       - name: Cache cargo registry
         uses: Swatinem/rust-cache@v2
 
+      - name: Clear stale Criterion state
+        run: rm -rf target/criterion
+
       - name: Run benchmarks
         shell: bash
         run: >
@@ -78,6 +81,9 @@ jobs:
 
       - name: Cache cargo registry
         uses: Swatinem/rust-cache@v2
+
+      - name: Clear stale Criterion state
+        run: rm -rf target/criterion
 
       - name: Run benchmarks
         shell: bash
