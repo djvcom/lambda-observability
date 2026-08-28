@@ -260,29 +260,22 @@ impl ExtensionState {
         loop {
             {
                 let mut queues = self.event_queues.lock().await;
-                if let Some(queue) = queues.get_mut(extension_id) {
-                    if let Some(event) = queue.pop_front() {
-                        if let LifecycleEvent::Invoke { request_id, .. } = &event {
-                            self.delivered_invokes
-                                .lock()
-                                .await
-                                .insert(extension_id.to_string(), request_id.clone());
-                        }
-                        return Some(event);
+                let queue = queues.get_mut(extension_id)?;
+                if let Some(event) = queue.pop_front() {
+                    if let LifecycleEvent::Invoke { request_id, .. } = &event {
+                        self.delivered_invokes
+                            .lock()
+                            .await
+                            .insert(extension_id.to_string(), request_id.clone());
                     }
-                } else {
-                    return None;
+                    return Some(event);
                 }
             }
 
             let notifiers = self.event_notifiers.lock().await;
-            if let Some(notifier) = notifiers.get(extension_id) {
-                let notifier = std::sync::Arc::clone(notifier);
-                drop(notifiers);
-                notifier.notified().await;
-            } else {
-                return None;
-            }
+            let notifier = std::sync::Arc::clone(notifiers.get(extension_id)?);
+            drop(notifiers);
+            notifier.notified().await;
         }
     }
 
