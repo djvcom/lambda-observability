@@ -28,7 +28,9 @@ bench = false
 workspace = true
 
 [dependencies]
-reqwest.workspace = true
+reqwest = { workspace = true, features = ["rustls-no-provider"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+webpki-roots = "1.0"
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
@@ -52,6 +54,7 @@ opentelemetry-semantic-conventions = { version = "0.32", features = ["semconv_ex
 rand = "0.10.1"
 
 [dev-dependencies]
+reqwest = { workspace = true, features = ["json"] }
 lambda-simulator.workspace = true
 opentelemetry-lambda-example.workspace = true
 lambda_runtime.workspace = true

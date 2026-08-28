@@ -59,6 +59,7 @@ pub async fn wait_for_http_ready(port: u16, timeout: Duration) -> TestResult {
     let deadline = Instant::now() + timeout;
     let url = format!("http://127.0.0.1:{}/health", port);
 
+    lambda_simulator::ensure_default_crypto_provider();
     let client = reqwest::Client::builder()
         .timeout(Duration::from_millis(100))
         .build()?;

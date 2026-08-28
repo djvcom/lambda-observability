@@ -13,6 +13,7 @@ use std::env;
 use std::time::Duration;
 
 fn main() {
+    lambda_simulator::ensure_default_crypto_provider();
     let runtime_api = env::var("AWS_LAMBDA_RUNTIME_API").expect("AWS_LAMBDA_RUNTIME_API not set");
 
     let client = reqwest::blocking::Client::builder()

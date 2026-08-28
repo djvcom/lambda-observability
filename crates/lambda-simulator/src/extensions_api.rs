@@ -158,6 +158,7 @@ async fn next_event(State(state): State<ExtensionsApiState>, headers: HeaderMap)
 
     match state.extensions.get_extension(&extension_id).await {
         Some(ext) => {
+            state.extensions.record_next_poll(&extension_id).await;
             let delivered_invoke = state.extensions.delivered_invoke(&extension_id).await;
             state
                 .readiness
