@@ -672,13 +672,16 @@ async fn test_simulator_shutdown_triggers_extension_shutdown() {
 
     let extension_runtime_api = format!("http://{}", runtime_api_base);
 
-    // The variable is scoped rather than set for the whole test because other
-    // scopes need it to hold different values; the extension reads it during
-    // registration and again while processing SHUTDOWN.
-    let extension_handle = temp_env::async_with_vars(
-        [("AWS_LAMBDA_RUNTIME_API", Some(extension_runtime_api.clone()))],
+    // The extension re-resolves AWS_LAMBDA_RUNTIME_API whenever it builds an
+    // API client, which can happen at any point in its lifetime, so the scope
+    // covers the whole test.
+    temp_env::async_with_vars(
+        [(
+            "AWS_LAMBDA_RUNTIME_API",
+            Some(extension_runtime_api.as_str()),
+        )],
         async {
-            let handle = tokio::spawn(async move {
+            let extension_handle = tokio::spawn(async move {
                 let runtime = RuntimeBuilder::new().config(config).build();
                 runtime.run().await
             });
@@ -691,33 +694,26 @@ async fn test_simulator_shutdown_triggers_extension_shutdown() {
                 .await
                 .expect("Extension did not register");
 
-            handle
-        },
-    )
-    .await;
+            // Verify extension registered
+            let extensions = simulator.get_registered_extensions().await;
+            assert!(!extensions.is_empty(), "Should have registered extension");
 
-    // Verify extension registered
-    let extensions = simulator.get_registered_extensions().await;
-    assert!(!extensions.is_empty(), "Should have registered extension");
-
-    // Extension should receive SHUTDOWN event and exit cleanly
-    let result = temp_env::async_with_vars(
-        [("AWS_LAMBDA_RUNTIME_API", Some(extension_runtime_api))],
-        async {
+            // Trigger graceful shutdown
             simulator.graceful_shutdown(ShutdownReason::Spindown).await;
 
-            tokio::time::timeout(Duration::from_secs(5), extension_handle)
+            // Extension should receive SHUTDOWN event and exit cleanly
+            let result = tokio::time::timeout(Duration::from_secs(5), extension_handle)
                 .await
-                .expect("Extension should exit within timeout")
+                .expect("Extension should exit within timeout");
+
+            assert!(
+                result.is_ok(),
+                "Extension should exit cleanly after shutdown: {:?}",
+                result
+            );
         },
     )
     .await;
-
-    assert!(
-        result.is_ok(),
-        "Extension should exit cleanly after shutdown: {:?}",
-        result
-    );
 
     collector
         .shutdown()
