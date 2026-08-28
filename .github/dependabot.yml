@@ -11,12 +11,14 @@ updates:
           - "*"
         exclude-patterns:
           - "opentelemetry*"
+          - "tracing-opentelemetry"
         update-types:
           - "minor"
           - "patch"
       opentelemetry-minor-patch:
         patterns:
           - "opentelemetry*"
+          - "tracing-opentelemetry"
         update-types:
           - "minor"
           - "patch"
