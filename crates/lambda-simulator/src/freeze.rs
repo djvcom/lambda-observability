@@ -30,49 +30,35 @@ pub enum FreezeMode {
 }
 
 /// Errors that can occur during freeze operations.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, thiserror::Error)]
 pub enum FreezeError {
     /// No PIDs configured for process freezing.
+    #[error("No PIDs configured for process freezing")]
     NoPidConfigured,
     /// The target process was not found.
+    #[error("Process {0} not found")]
     ProcessNotFound(i32),
     /// Permission denied to send signal.
+    #[error("Permission denied to send signal to process {0}")]
     PermissionDenied(i32),
     /// Platform does not support process freezing.
+    #[error("Process freezing not supported on this platform")]
     UnsupportedPlatform,
     /// Signal sending failed for another reason.
+    #[error("Signal failed: {0}")]
     SignalFailed(String),
     /// Multiple errors occurred when freezing/unfreezing multiple PIDs.
+    #[error("Multiple freeze errors: {}", display_errors(.0))]
     Multiple(Vec<FreezeError>),
 }
 
-impl std::fmt::Display for FreezeError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            FreezeError::NoPidConfigured => write!(f, "No PIDs configured for process freezing"),
-            FreezeError::ProcessNotFound(pid) => write!(f, "Process {} not found", pid),
-            FreezeError::PermissionDenied(pid) => {
-                write!(f, "Permission denied to send signal to process {}", pid)
-            }
-            FreezeError::UnsupportedPlatform => {
-                write!(f, "Process freezing not supported on this platform")
-            }
-            FreezeError::SignalFailed(msg) => write!(f, "Signal failed: {}", msg),
-            FreezeError::Multiple(errors) => {
-                write!(f, "Multiple freeze errors: ")?;
-                for (i, err) in errors.iter().enumerate() {
-                    if i > 0 {
-                        write!(f, ", ")?;
-                    }
-                    write!(f, "{}", err)?;
-                }
-                Ok(())
-            }
-        }
-    }
+fn display_errors(errors: &[FreezeError]) -> String {
+    errors
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join(", ")
 }
-
-impl std::error::Error for FreezeError {}
 
 /// State for managing process freezing.
 ///

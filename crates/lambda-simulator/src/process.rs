@@ -197,13 +197,16 @@ impl std::fmt::Debug for ManagedProcess {
 }
 
 /// Error type for process spawning operations.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum ProcessError {
     /// The specified binary was not found.
+    #[error("Binary not found: {}", .0.display())]
     BinaryNotFound(PathBuf),
     /// Failed to spawn the process.
-    SpawnFailed(io::Error),
+    #[error("Failed to spawn process")]
+    SpawnFailed(#[source] io::Error),
     /// The process terminated unexpectedly.
+    #[error("Process {pid} terminated unexpectedly{}", display_status(status))]
     Terminated {
         /// The process ID of the terminated process.
         pid: u32,
@@ -212,33 +215,10 @@ pub enum ProcessError {
     },
 }
 
-impl std::fmt::Display for ProcessError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ProcessError::BinaryNotFound(path) => {
-                write!(f, "Binary not found: {}", path.display())
-            }
-            ProcessError::SpawnFailed(e) => {
-                write!(f, "Failed to spawn process: {}", e)
-            }
-            ProcessError::Terminated { pid, status } => {
-                write!(f, "Process {} terminated unexpectedly", pid)?;
-                if let Some(s) = status {
-                    write!(f, " with status {:?}", s)?;
-                }
-                Ok(())
-            }
-        }
-    }
-}
-
-impl std::error::Error for ProcessError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            ProcessError::SpawnFailed(e) => Some(e),
-            _ => None,
-        }
-    }
+fn display_status(status: &Option<ExitStatus>) -> String {
+    status
+        .map(|s| format!(" with status {:?}", s))
+        .unwrap_or_default()
 }
 
 /// Spawns a process with the given configuration and Lambda environment variables.

@@ -416,16 +416,14 @@ impl SimulatorBuilder {
 
         let listener = TcpListener::bind(addr)
             .await
-            .map_err(|e| SimulatorError::BindError(e.to_string()))?;
+            .map_err(SimulatorError::BindError)?;
 
-        let local_addr = listener
-            .local_addr()
-            .map_err(|e| SimulatorError::ServerStart(e.to_string()))?;
+        let local_addr = listener.local_addr().map_err(SimulatorError::ServerStart)?;
 
         let server_handle = tokio::spawn(async move {
             axum::serve(listener, combined_router)
                 .await
-                .map_err(|e| SimulatorError::ServerStart(e.to_string()))
+                .map_err(SimulatorError::ServerStart)
         });
 
         // Emit platform.initStart telemetry event
