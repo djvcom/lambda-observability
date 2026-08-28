@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.8](https://github.com/djvcom/lambda-observability/compare/lambda-simulator-v0.1.7...lambda-simulator-v0.1.8) - 2026-08-28
+
+### Other
+
+- adopt rust10x review recommendations ([#130](https://github.com/djvcom/lambda-observability/pull/130))
+
 ## [0.1.7](https://github.com/djvcom/lambda-observability/compare/lambda-simulator-v0.1.6...lambda-simulator-v0.1.7) - 2026-08-28
 
 ### Added
