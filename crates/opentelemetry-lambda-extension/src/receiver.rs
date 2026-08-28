@@ -5,6 +5,7 @@
 
 use crate::completion::{CompletionSource, CompletionTracker};
 use crate::config::ReceiverConfig;
+use crate::conversion::ColdStartContext;
 use axum::{
     Json, Router,
     body::Bytes,
@@ -80,6 +81,7 @@ pub struct OtlpReceiver {
     config: ReceiverConfig,
     signal_tx: mpsc::Sender<Signal>,
     completion: Arc<CompletionTracker>,
+    coldstart: Arc<ColdStartContext>,
     cancel_token: CancellationToken,
 }
 
@@ -91,17 +93,20 @@ impl OtlpReceiver {
     /// * `config` - Receiver configuration
     /// * `signal_tx` - Channel for sending received signals to the aggregator
     /// * `completion` - Tracker notified when a wrapper signals invocation completion
+    /// * `coldstart` - Cold-start span identifiers advertised at `/coldstart-context`
     /// * `cancel_token` - Token for graceful shutdown
     pub fn new(
         config: ReceiverConfig,
         signal_tx: mpsc::Sender<Signal>,
         completion: Arc<CompletionTracker>,
+        coldstart: Arc<ColdStartContext>,
         cancel_token: CancellationToken,
     ) -> Self {
         Self {
             config,
             signal_tx,
             completion,
+            coldstart,
             cancel_token,
         }
     }
@@ -130,7 +135,11 @@ impl OtlpReceiver {
     > {
         if !self.config.http_enabled {
             tracing::info!("HTTP receiver disabled");
-            let state = Arc::new(ReceiverState::new(self.signal_tx, self.completion));
+            let state = Arc::new(ReceiverState::new(
+                self.signal_tx,
+                self.completion,
+                self.coldstart,
+            ));
             let handle = ReceiverHandle {
                 state,
                 local_addr: SocketAddr::from(([127, 0, 0, 1], 0)),
@@ -146,7 +155,11 @@ impl OtlpReceiver {
         let listener = TcpListener::bind(addr).await?;
         let local_addr = listener.local_addr()?;
 
-        let state = Arc::new(ReceiverState::new(self.signal_tx, self.completion));
+        let state = Arc::new(ReceiverState::new(
+            self.signal_tx,
+            self.completion,
+            self.coldstart,
+        ));
         let handle = ReceiverHandle {
             state: state.clone(),
             local_addr,
@@ -154,6 +167,7 @@ impl OtlpReceiver {
 
         let app = Router::new()
             .route("/health", get(handle_health))
+            .route("/coldstart-context", get(handle_coldstart_context))
             .route("/v1/traces", post(handle_traces))
             .route("/v1/metrics", post(handle_metrics))
             .route("/v1/logs", post(handle_logs))
@@ -182,17 +196,30 @@ pub struct HealthResponse {
     pub signals_received: u64,
 }
 
+/// Response naming the cold-start span's context.
+#[derive(Debug, Clone, Serialize)]
+pub struct ColdStartContextResponse {
+    /// W3C `traceparent` value for the cold-start span.
+    pub traceparent: String,
+}
+
 struct ReceiverState {
     signal_tx: mpsc::Sender<Signal>,
     completion: Arc<CompletionTracker>,
+    coldstart: Arc<ColdStartContext>,
     signals_received: AtomicU64,
 }
 
 impl ReceiverState {
-    fn new(signal_tx: mpsc::Sender<Signal>, completion: Arc<CompletionTracker>) -> Self {
+    fn new(
+        signal_tx: mpsc::Sender<Signal>,
+        completion: Arc<CompletionTracker>,
+        coldstart: Arc<ColdStartContext>,
+    ) -> Self {
         Self {
             signal_tx,
             completion,
+            coldstart,
             signals_received: AtomicU64::new(0),
         }
     }
@@ -220,6 +247,17 @@ async fn handle_invocation_complete(
         .complete(request_id, CompletionSource::Wrapper);
 
     StatusCode::ACCEPTED
+}
+
+/// Serves the cold-start span's context so the function's first invocation
+/// span can link to the cold-start trace. The identifiers exist from
+/// extension startup, before the span itself is synthesised.
+async fn handle_coldstart_context(
+    State(state): State<Arc<ReceiverState>>,
+) -> Json<ColdStartContextResponse> {
+    Json(ColdStartContextResponse {
+        traceparent: state.coldstart.traceparent(),
+    })
 }
 
 async fn handle_health(State(state): State<Arc<ReceiverState>>) -> Json<HealthResponse> {

@@ -4,7 +4,9 @@
 //! signals (metrics and spans) following semantic conventions.
 
 use crate::resource::semconv;
-use crate::telemetry::{ReportRecord, RuntimeDoneRecord, StartRecord, TelemetryEvent};
+use crate::telemetry::{
+    InitRuntimeDoneRecord, ReportRecord, RuntimeDoneRecord, StartRecord, TelemetryEvent,
+};
 use crate::tracing::XRayTraceHeader;
 use opentelemetry_proto::tonic::collector::metrics::v1::ExportMetricsServiceRequest;
 use opentelemetry_proto::tonic::collector::trace::v1::ExportTraceServiceRequest;
@@ -15,12 +17,48 @@ use opentelemetry_proto::tonic::metrics::v1::{
 use opentelemetry_proto::tonic::resource::v1::Resource;
 use opentelemetry_proto::tonic::trace::v1::{ResourceSpans, ScopeSpans, Span, Status, status};
 use opentelemetry_semantic_conventions::SCHEMA_URL;
+use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Scope name for instrumentation.
 const SCOPE_NAME: &str = "lambda-otel-extension";
 /// Scope version for instrumentation.
 const SCOPE_VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// Identifiers for the synthesised cold-start span.
+///
+/// Generated at extension startup — before the runtime initialises — so the
+/// receiver can advertise the span's context to the function while the span
+/// itself only comes into existence later, when `platform.initRuntimeDone`
+/// arrives. This mirrors the upstream opentelemetry-lambda collector's init
+/// span (a root span in its own trace, built from the platform's
+/// authoritative init window), with the addition that the function's first
+/// invocation span can carry a link back to it.
+#[derive(Debug)]
+pub struct ColdStartContext {
+    trace_id: [u8; 16],
+    span_id: [u8; 8],
+}
+
+impl ColdStartContext {
+    /// Generates fresh random span identifiers.
+    pub fn generate() -> Self {
+        Self {
+            trace_id: rand::random(),
+            span_id: rand::random(),
+        }
+    }
+
+    /// The W3C `traceparent` value naming the cold-start span, served to the
+    /// function so its first invocation span can link to this trace.
+    pub fn traceparent(&self) -> String {
+        format!(
+            "00-{}-{}-01",
+            hex::encode(self.trace_id),
+            hex::encode(self.span_id)
+        )
+    }
+}
 
 /// Converts platform events to OTLP metrics.
 pub struct MetricsConverter {
@@ -281,6 +319,68 @@ impl SpanConverter {
             trace_state: String::new(),
         };
 
+        self.wrap_span(span)
+    }
+
+    /// Creates the cold-start span from the platform's init window, mirroring
+    /// the upstream opentelemetry-lambda collector: a root span in its own
+    /// trace spanning `platform.initStart` to `platform.initRuntimeDone`,
+    /// with error status when initialisation failed. The span uses the
+    /// pre-generated identifiers from `context`, which the receiver has
+    /// already advertised to the function for linking.
+    pub fn create_coldstart_span(
+        &self,
+        context: &ColdStartContext,
+        record: &InitRuntimeDoneRecord,
+        start_time: &str,
+        end_time: &str,
+    ) -> ExportTraceServiceRequest {
+        let start_nanos = parse_iso8601_to_nanos(start_time).unwrap_or_else(current_time_nanos);
+        let end_nanos = parse_iso8601_to_nanos(end_time).unwrap_or_else(current_time_nanos);
+        let failed = record.status != "success";
+
+        let span = Span {
+            trace_id: context.trace_id.to_vec(),
+            span_id: context.span_id.to_vec(),
+            parent_span_id: Vec::new(),
+            name: "coldstart".to_string(),
+            kind: opentelemetry_proto::tonic::trace::v1::span::SpanKind::Internal as i32,
+            start_time_unix_nano: start_nanos,
+            end_time_unix_nano: end_nanos,
+            attributes: vec![KeyValue {
+                key: semconv::FAAS_COLDSTART.to_string(),
+                value: Some(AnyValue {
+                    value: Some(any_value::Value::BoolValue(true)),
+                }),
+            }],
+            dropped_attributes_count: 0,
+            events: vec![],
+            dropped_events_count: 0,
+            links: vec![],
+            dropped_links_count: 0,
+            status: Some(Status {
+                code: if failed {
+                    status::StatusCode::Error as i32
+                } else {
+                    status::StatusCode::Unset as i32
+                },
+                message: if failed {
+                    record
+                        .error_type
+                        .clone()
+                        .unwrap_or_else(|| format!("initialisation {}", record.status))
+                } else {
+                    String::new()
+                },
+            }),
+            flags: 0,
+            trace_state: String::new(),
+        };
+
+        self.wrap_span(span)
+    }
+
+    fn wrap_span(&self, span: Span) -> ExportTraceServiceRequest {
         ExportTraceServiceRequest {
             resource_spans: vec![ResourceSpans {
                 resource: Some(self.resource.clone()),
@@ -368,21 +468,35 @@ pub struct TelemetryProcessor {
     metrics_converter: MetricsConverter,
     span_converter: SpanConverter,
     pending_starts: std::collections::HashMap<String, (StartRecord, String)>,
+    coldstart: Arc<ColdStartContext>,
+    pending_init_start: Option<String>,
+    coldstart_span: Option<ExportTraceServiceRequest>,
 }
 
 impl TelemetryProcessor {
-    /// Creates a new telemetry processor.
-    pub fn new(resource: Resource) -> Self {
+    /// Creates a new telemetry processor. `coldstart` carries the
+    /// pre-generated identifiers for the cold-start span, shared with the
+    /// receiver that advertises them to the function.
+    pub fn new(resource: Resource, coldstart: Arc<ColdStartContext>) -> Self {
         Self {
             metrics_converter: MetricsConverter::new(resource.clone()),
             span_converter: SpanConverter::new(resource),
             pending_starts: std::collections::HashMap::new(),
+            coldstart,
+            pending_init_start: None,
+            coldstart_span: None,
         }
     }
 
     /// Creates a processor with default resource.
     pub fn with_defaults() -> Self {
-        Self::new(Resource::default())
+        Self::new(Resource::default(), Arc::new(ColdStartContext::generate()))
+    }
+
+    /// Takes the synthesised cold-start span, if `platform.initRuntimeDone`
+    /// has produced one since the last call.
+    pub fn take_coldstart_span(&mut self) -> Option<ExportTraceServiceRequest> {
+        self.coldstart_span.take()
     }
 
     /// Sets the resource for this processor.
@@ -406,6 +520,25 @@ impl TelemetryProcessor {
 
         for event in events {
             match event {
+                TelemetryEvent::InitStart { time, record: _ } => {
+                    self.pending_init_start = Some(time);
+                }
+                TelemetryEvent::InitRuntimeDone { time, record } => {
+                    // Only a genuinely cold environment gets a coldstart
+                    // span: provisioned-concurrency and SnapStart initialise
+                    // outside any request's critical path, and calling that
+                    // a cold start would be wrong.
+                    if record.initialization_type == "on-demand"
+                        && let Some(start_time) = self.pending_init_start.take()
+                    {
+                        self.coldstart_span = Some(self.span_converter.create_coldstart_span(
+                            &self.coldstart,
+                            &record,
+                            &start_time,
+                            &time,
+                        ));
+                    }
+                }
                 TelemetryEvent::Start { time, record } => {
                     self.pending_starts
                         .insert(record.request_id.clone(), (record, time));
@@ -553,6 +686,116 @@ mod tests {
 
         // Verify span ID is valid (8 bytes)
         assert_eq!(span.span_id.len(), 8);
+    }
+
+    fn init_start_event(time: &str) -> TelemetryEvent {
+        TelemetryEvent::InitStart {
+            time: time.to_string(),
+            record: crate::telemetry::InitStartRecord {
+                initialization_type: "on-demand".to_string(),
+                phase: String::new(),
+                runtime_version: None,
+                runtime_version_arn: None,
+            },
+        }
+    }
+
+    fn init_runtime_done_event(
+        time: &str,
+        initialization_type: &str,
+        status: &str,
+        error_type: Option<&str>,
+    ) -> TelemetryEvent {
+        TelemetryEvent::InitRuntimeDone {
+            time: time.to_string(),
+            record: InitRuntimeDoneRecord {
+                initialization_type: initialization_type.to_string(),
+                status: status.to_string(),
+                phase: String::new(),
+                error_type: error_type.map(str::to_string),
+            },
+        }
+    }
+
+    #[test]
+    fn test_coldstart_span_from_platform_init_window() {
+        let coldstart = Arc::new(ColdStartContext::generate());
+        let mut processor = TelemetryProcessor::new(Resource::default(), Arc::clone(&coldstart));
+
+        processor.process_events(vec![
+            init_start_event("2026-08-28T21:00:00.000Z"),
+            init_runtime_done_event("2026-08-28T21:00:01.500Z", "on-demand", "success", None),
+        ]);
+
+        let trace = processor
+            .take_coldstart_span()
+            .expect("on-demand init must synthesise a coldstart span");
+        let span = &trace.resource_spans[0].scope_spans[0].spans[0];
+
+        assert_eq!(span.name, "coldstart");
+        assert!(span.parent_span_id.is_empty(), "must be a root span");
+        assert_eq!(
+            span.end_time_unix_nano - span.start_time_unix_nano,
+            1_500_000_000
+        );
+        let traceparent = coldstart.traceparent();
+        assert!(traceparent.contains(&hex::encode(&span.trace_id)));
+        assert!(traceparent.contains(&hex::encode(&span.span_id)));
+
+        assert!(
+            processor.take_coldstart_span().is_none(),
+            "the span must only be taken once"
+        );
+    }
+
+    #[test]
+    fn test_coldstart_span_records_init_failure() {
+        let mut processor = TelemetryProcessor::with_defaults();
+
+        processor.process_events(vec![
+            init_start_event("2026-08-28T21:00:00.000Z"),
+            init_runtime_done_event(
+                "2026-08-28T21:00:01.000Z",
+                "on-demand",
+                "failure",
+                Some("Runtime.ExitError"),
+            ),
+        ]);
+
+        let trace = processor.take_coldstart_span().unwrap();
+        let span = &trace.resource_spans[0].scope_spans[0].spans[0];
+        let status = span.status.as_ref().unwrap();
+        assert_eq!(status.code, status::StatusCode::Error as i32);
+        assert_eq!(status.message, "Runtime.ExitError");
+    }
+
+    #[test]
+    fn test_no_coldstart_span_without_on_demand_init() {
+        let mut processor = TelemetryProcessor::with_defaults();
+
+        processor.process_events(vec![
+            init_start_event("2026-08-28T21:00:00.000Z"),
+            init_runtime_done_event(
+                "2026-08-28T21:00:01.000Z",
+                "provisioned-concurrency",
+                "success",
+                None,
+            ),
+        ]);
+
+        assert!(processor.take_coldstart_span().is_none());
+    }
+
+    #[test]
+    fn test_coldstart_context_traceparent_format() {
+        let context = ColdStartContext::generate();
+        let traceparent = context.traceparent();
+        let parts: Vec<&str> = traceparent.split('-').collect();
+        assert_eq!(parts.len(), 4);
+        assert_eq!(parts[0], "00");
+        assert_eq!(parts[1].len(), 32);
+        assert_eq!(parts[2].len(), 16);
+        assert_eq!(parts[3], "01");
     }
 
     #[test]

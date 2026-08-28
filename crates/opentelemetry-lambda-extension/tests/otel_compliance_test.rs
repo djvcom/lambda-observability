@@ -1074,7 +1074,10 @@ fn test_telemetry_processor_output_structure() {
     };
 
     let resource = ResourceBuilder::new().build_proto();
-    let mut processor = TelemetryProcessor::new(resource);
+    let mut processor = TelemetryProcessor::new(
+        resource,
+        std::sync::Arc::new(opentelemetry_lambda_extension::ColdStartContext::generate()),
+    );
 
     let events = vec![
         TelemetryEvent::Start {

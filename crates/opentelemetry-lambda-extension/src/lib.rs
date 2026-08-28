@@ -41,11 +41,13 @@ pub use config::{
     CompletionWait, Compression, Config, CorrelationConfig, ExporterConfig, FlushConfig,
     FlushStrategy, Protocol, ReceiverConfig, TelemetryApiConfig,
 };
-pub use conversion::{MetricsConverter, SpanConverter, TelemetryProcessor};
+pub use conversion::{ColdStartContext, MetricsConverter, SpanConverter, TelemetryProcessor};
 pub use error::{ExtensionError, Result};
 pub use exporter::{ExportError, ExportResult, OtlpExporter};
 pub use flush::{FlushManager, FlushReason};
-pub use receiver::{HealthResponse, OtlpReceiver, ReceiverHandle, Signal};
+pub use receiver::{
+    ColdStartContextResponse, HealthResponse, OtlpReceiver, ReceiverHandle, Signal,
+};
 pub use resource::{ResourceBuilder, detect_resource};
 pub use runtime::{ExtensionRuntime, RuntimeBuilder, RuntimeError};
 pub use service::{EventsService, ExtensionState, TelemetryService};

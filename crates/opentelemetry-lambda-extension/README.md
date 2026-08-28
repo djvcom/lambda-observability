@@ -14,6 +14,7 @@ This extension receives telemetry data (traces, metrics, logs) from instrumented
 - **Bounded memory** - All buffered telemetry lives under one shared byte/entry budget derived from the function's memory size; the oldest signals are dropped rather than growing without limit
 - **Deadline-aware shutdown** - The final flush is budgeted against the SHUTDOWN deadline, abandoning deliberately rather than being SIGKILLed mid-export
 - **Platform telemetry** - Captures Lambda platform metrics (duration, memory, cold starts)
+- **Cold-start spans** - On-demand initialisation is emitted as a `coldstart` span timed from the platform's `initStart`/`initRuntimeDone` window (a root span in its own trace, error status on failed init, mirroring the upstream opentelemetry-lambda collector); the receiver advertises the span's context at `GET /coldstart-context` so a wrapper can link the first invocation span to it
 - **Resource detection** - Automatically detects Lambda resource attributes
 
 ## Installation

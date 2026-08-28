@@ -97,6 +97,7 @@ impl ExtensionRuntime {
             self.config.receiver.clone(),
             signal_tx,
             Arc::clone(&state.completion),
+            Arc::clone(&state.coldstart),
             self.cancel_token.child_token(),
         );
 

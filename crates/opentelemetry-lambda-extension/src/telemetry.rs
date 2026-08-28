@@ -222,6 +222,9 @@ pub struct InitRuntimeDoneRecord {
     /// Phase of initialization.
     #[serde(default)]
     pub phase: String,
+    /// Error type when initialization failed.
+    #[serde(default)]
+    pub error_type: Option<String>,
 }
 
 /// Record for platform.start event.

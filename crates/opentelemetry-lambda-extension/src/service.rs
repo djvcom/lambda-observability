@@ -14,7 +14,7 @@
 use crate::aggregator::SignalAggregator;
 use crate::completion::{CompletionOutcome, CompletionSource, CompletionTracker};
 use crate::config::{CompletionWait, Config, FlushStrategy};
-use crate::conversion::{MetricsConverter, TelemetryProcessor};
+use crate::conversion::{ColdStartContext, MetricsConverter, TelemetryProcessor};
 use crate::exporter::OtlpExporter;
 use crate::flush::FlushManager;
 use crate::receiver::Signal;
@@ -107,6 +107,7 @@ pub struct ExtensionState {
     pub(crate) telemetry_processor: Arc<Mutex<TelemetryProcessor>>,
     pub(crate) metrics_converter: MetricsConverter,
     pub(crate) completion: Arc<CompletionTracker>,
+    pub(crate) coldstart: Arc<ColdStartContext>,
     pub(crate) config: Config,
     /// Lock to coordinate shutdown with telemetry processing.
     ///
@@ -132,14 +133,19 @@ impl ExtensionState {
     ) -> Result<(Self, oneshot::Receiver<()>), crate::exporter::ExportError> {
         let exporter = OtlpExporter::new(config.exporter.clone())?;
         let (shutdown_tx, shutdown_rx) = oneshot::channel();
+        let coldstart = Arc::new(ColdStartContext::generate());
 
         let state = Self {
             aggregator: Arc::new(SignalAggregator::new(config.flush.clone())),
             exporter: Arc::new(exporter),
             flush_manager: Arc::new(Mutex::new(FlushManager::new(config.flush.clone()))),
-            telemetry_processor: Arc::new(Mutex::new(TelemetryProcessor::new(resource.clone()))),
+            telemetry_processor: Arc::new(Mutex::new(TelemetryProcessor::new(
+                resource.clone(),
+                Arc::clone(&coldstart),
+            ))),
             metrics_converter: MetricsConverter::new(resource),
             completion: Arc::new(CompletionTracker::new()),
+            coldstart,
             config,
             processing_lock: RwLock::new(()),
             shutdown_tx: Mutex::new(Some(shutdown_tx)),
@@ -442,10 +448,16 @@ impl ExtensionState {
 
         let internal_events = convert_telemetry_events(events);
 
-        let (metrics, _traces) = {
+        let (metrics, coldstart_span) = {
             let mut processor = self.telemetry_processor.lock().await;
-            processor.process_events(internal_events)
+            let (metrics, _traces) = processor.process_events(internal_events);
+            (metrics, processor.take_coldstart_span())
         };
+
+        if let Some(trace) = coldstart_span {
+            tracing::debug!("Adding synthesised coldstart span to aggregator");
+            self.aggregator.add(Signal::Traces(trace)).await;
+        }
 
         for metric in metrics {
             self.aggregator
@@ -537,11 +549,21 @@ impl Service<Vec<LambdaTelemetry>> for TelemetryService {
     }
 }
 
+/// Maps the lambda_extension crate's initialisation type onto the Telemetry
+/// API's wire strings, which the internal records carry.
+fn init_type_str(init_type: &lambda_extension::InitType) -> &'static str {
+    match init_type {
+        lambda_extension::InitType::OnDemand => "on-demand",
+        lambda_extension::InitType::ProvisionedConcurrency => "provisioned-concurrency",
+        lambda_extension::InitType::SnapStart => "snap-start",
+    }
+}
+
 /// Converts lambda_extension telemetry events to our internal format.
 fn convert_telemetry_events(events: Vec<LambdaTelemetry>) -> Vec<crate::telemetry::TelemetryEvent> {
     use crate::telemetry::{
-        ReportMetrics, ReportRecord, RuntimeDoneRecord, RuntimeMetrics, SpanRecord, StartRecord,
-        TelemetryEvent, TracingRecord,
+        InitRuntimeDoneRecord, InitStartRecord, ReportMetrics, ReportRecord, RuntimeDoneRecord,
+        RuntimeMetrics, SpanRecord, StartRecord, TelemetryEvent, TracingRecord,
     };
 
     events
@@ -550,6 +572,37 @@ fn convert_telemetry_events(events: Vec<LambdaTelemetry>) -> Vec<crate::telemetr
             let time = event.time.to_rfc3339();
 
             match event.record {
+                LambdaTelemetryRecord::PlatformInitStart {
+                    initialization_type,
+                    phase: _,
+                    runtime_version,
+                    runtime_version_arn,
+                } => Some(TelemetryEvent::InitStart {
+                    time,
+                    record: InitStartRecord {
+                        initialization_type: init_type_str(&initialization_type).to_string(),
+                        phase: String::new(),
+                        runtime_version,
+                        runtime_version_arn,
+                    },
+                }),
+
+                LambdaTelemetryRecord::PlatformInitRuntimeDone {
+                    initialization_type,
+                    phase: _,
+                    status,
+                    error_type,
+                    spans: _,
+                } => Some(TelemetryEvent::InitRuntimeDone {
+                    time,
+                    record: InitRuntimeDoneRecord {
+                        initialization_type: init_type_str(&initialization_type).to_string(),
+                        status: format!("{:?}", status).to_lowercase(),
+                        phase: String::new(),
+                        error_type,
+                    },
+                }),
+
                 LambdaTelemetryRecord::PlatformStart {
                     request_id,
                     version,
@@ -798,6 +851,33 @@ mod tests {
         let result = ExtensionState::new(config, proto_resource);
         assert!(result.is_ok());
         let (_state, _shutdown_rx) = result.unwrap();
+    }
+
+    #[test]
+    fn test_convert_init_events_to_internal_format() {
+        let json = r#"[
+            {"time":"2026-08-28T21:00:00.000Z","type":"platform.initStart","record":{"initializationType":"on-demand","phase":"init"}},
+            {"time":"2026-08-28T21:00:01.500Z","type":"platform.initRuntimeDone","record":{"initializationType":"on-demand","phase":"init","status":"success"}}
+        ]"#;
+        let events: Vec<LambdaTelemetry> = serde_json::from_str(json).unwrap();
+
+        let internal = convert_telemetry_events(events);
+        assert_eq!(internal.len(), 2);
+
+        match &internal[0] {
+            crate::telemetry::TelemetryEvent::InitStart { time, record } => {
+                assert_eq!(time, "2026-08-28T21:00:00+00:00");
+                assert_eq!(record.initialization_type, "on-demand");
+            }
+            other => panic!("expected InitStart, got {other:?}"),
+        }
+        match &internal[1] {
+            crate::telemetry::TelemetryEvent::InitRuntimeDone { record, .. } => {
+                assert_eq!(record.initialization_type, "on-demand");
+                assert_eq!(record.status, "success");
+            }
+            other => panic!("expected InitRuntimeDone, got {other:?}"),
+        }
     }
 
     #[test]

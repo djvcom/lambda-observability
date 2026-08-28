@@ -2,7 +2,7 @@
 
 use criterion::{Criterion, criterion_group, criterion_main};
 use opentelemetry_lambda_extension::conversion::{
-    MetricsConverter, SpanConverter, TelemetryProcessor,
+    ColdStartContext, MetricsConverter, SpanConverter, TelemetryProcessor,
 };
 use opentelemetry_lambda_extension::telemetry::{
     ReportMetrics, ReportRecord, RuntimeDoneRecord, StartRecord, TelemetryEvent,
@@ -91,7 +91,15 @@ fn bench_telemetry_processor(c: &mut Criterion) {
 
     c.bench_function("TelemetryProcessor::process_events", |b| {
         b.iter_batched(
-            || (TelemetryProcessor::new(Resource::default()), events.clone()),
+            || {
+                (
+                    TelemetryProcessor::new(
+                        Resource::default(),
+                        std::sync::Arc::new(ColdStartContext::generate()),
+                    ),
+                    events.clone(),
+                )
+            },
             |(mut processor, events)| processor.process_events(black_box(events)),
             criterion::BatchSize::SmallInput,
         )

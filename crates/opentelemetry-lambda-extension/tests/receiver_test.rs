@@ -25,6 +25,7 @@ async fn test_receiver_accepts_protobuf_traces() {
         config,
         signal_tx,
         std::sync::Arc::new(opentelemetry_lambda_extension::CompletionTracker::new()),
+        std::sync::Arc::new(opentelemetry_lambda_extension::ColdStartContext::generate()),
         cancel_token.clone(),
     );
     let (_handle, future) = receiver.start().await.expect("Failed to start receiver");
@@ -94,6 +95,7 @@ async fn test_receiver_accepts_json_traces() {
         config,
         signal_tx,
         std::sync::Arc::new(opentelemetry_lambda_extension::CompletionTracker::new()),
+        std::sync::Arc::new(opentelemetry_lambda_extension::ColdStartContext::generate()),
         cancel_token.clone(),
     );
     let (_handle, future) = receiver.start().await.expect("Failed to start receiver");
@@ -150,6 +152,7 @@ async fn test_receiver_backpressure() {
         config,
         signal_tx,
         std::sync::Arc::new(opentelemetry_lambda_extension::CompletionTracker::new()),
+        std::sync::Arc::new(opentelemetry_lambda_extension::ColdStartContext::generate()),
         cancel_token.clone(),
     );
     let (_handle, future) = receiver.start().await.expect("Failed to start receiver");
@@ -199,6 +202,7 @@ async fn test_receiver_invalid_protobuf() {
         config,
         signal_tx,
         std::sync::Arc::new(opentelemetry_lambda_extension::CompletionTracker::new()),
+        std::sync::Arc::new(opentelemetry_lambda_extension::ColdStartContext::generate()),
         cancel_token.clone(),
     );
     let (_handle, future) = receiver.start().await.expect("Failed to start receiver");
@@ -237,6 +241,7 @@ async fn test_receiver_handles_metrics() {
         config,
         signal_tx,
         std::sync::Arc::new(opentelemetry_lambda_extension::CompletionTracker::new()),
+        std::sync::Arc::new(opentelemetry_lambda_extension::ColdStartContext::generate()),
         cancel_token.clone(),
     );
     let (_handle, future) = receiver.start().await.expect("Failed to start receiver");
@@ -284,6 +289,7 @@ async fn test_receiver_handles_logs() {
         config,
         signal_tx,
         std::sync::Arc::new(opentelemetry_lambda_extension::CompletionTracker::new()),
+        std::sync::Arc::new(opentelemetry_lambda_extension::ColdStartContext::generate()),
         cancel_token.clone(),
     );
     let (_handle, future) = receiver.start().await.expect("Failed to start receiver");
@@ -312,6 +318,52 @@ async fn test_receiver_handles_logs() {
         .expect("Channel closed");
 
     assert!(matches!(signal, Signal::Logs(_)));
+
+    cancel_token.cancel();
+    let _ = tokio::time::timeout(Duration::from_secs(1), server_task).await;
+}
+
+#[tokio::test]
+async fn test_receiver_serves_coldstart_context() {
+    let (signal_tx, _signal_rx) = mpsc::channel(100);
+    let cancel_token = CancellationToken::new();
+
+    let config = ReceiverConfig {
+        http_port: 14324,
+        http_enabled: true,
+    };
+
+    let coldstart =
+        std::sync::Arc::new(opentelemetry_lambda_extension::ColdStartContext::generate());
+    let receiver = OtlpReceiver::new(
+        config,
+        signal_tx,
+        std::sync::Arc::new(opentelemetry_lambda_extension::CompletionTracker::new()),
+        std::sync::Arc::clone(&coldstart),
+        cancel_token.clone(),
+    );
+    let (_handle, future) = receiver.start().await.expect("Failed to start receiver");
+    let server_task = tokio::spawn(future);
+
+    wait_for_http_ready(14324, Duration::from_secs(5))
+        .await
+        .expect("Receiver failed to start");
+
+    let response = reqwest::get("http://127.0.0.1:14324/coldstart-context")
+        .await
+        .expect("Failed to send request");
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+
+    let body: serde_json::Value = response.json().await.expect("Invalid JSON");
+    let traceparent = body["traceparent"].as_str().expect("Missing traceparent");
+    assert_eq!(traceparent, coldstart.traceparent());
+
+    let parts: Vec<&str> = traceparent.split('-').collect();
+    assert_eq!(parts.len(), 4);
+    assert_eq!(parts[0], "00");
+    assert_eq!(parts[1].len(), 32);
+    assert_eq!(parts[2].len(), 16);
+    assert_eq!(parts[3], "01");
 
     cancel_token.cancel();
     let _ = tokio::time::timeout(Duration::from_secs(1), server_task).await;
