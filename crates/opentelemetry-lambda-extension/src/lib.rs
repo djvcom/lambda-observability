@@ -7,12 +7,12 @@
 //! # Example
 //!
 //! ```no_run
-//! use opentelemetry_lambda_extension::{Config, Result, RuntimeBuilder};
+//! use opentelemetry_lambda_extension::{Config, ExtensionRuntime, Result};
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<()> {
 //!     let config = Config::load()?;
-//!     let runtime = RuntimeBuilder::new().config(config).build();
+//!     let runtime = ExtensionRuntime::builder().config(config).build();
 //!     runtime.run().await?;
 //!     Ok(())
 //! }

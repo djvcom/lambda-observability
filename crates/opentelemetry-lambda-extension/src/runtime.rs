@@ -39,6 +39,11 @@ impl ExtensionRuntime {
         Self::new(Config::default())
     }
 
+    /// Returns a builder for configuring the runtime.
+    pub fn builder() -> RuntimeBuilder {
+        RuntimeBuilder::new()
+    }
+
     /// Sets a custom resource for this runtime.
     pub fn with_resource(mut self, resource: SdkResource) -> Self {
         self.resource = resource;
