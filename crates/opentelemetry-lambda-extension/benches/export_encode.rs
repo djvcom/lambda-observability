@@ -26,6 +26,7 @@ fn make_span(index: usize) -> Span {
                         "value-{index}-{attr}-with-a-realistic-payload"
                     ))),
                 }),
+                ..Default::default()
             })
             .collect(),
         ..Default::default()
