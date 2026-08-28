@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.7](https://github.com/djvcom/lambda-observability/compare/opentelemetry-lambda-tower-v0.1.6...opentelemetry-lambda-tower-v0.1.7) - 2026-08-28
+
+### Other
+
+- *(deps)* upgrade the OpenTelemetry crates to 0.32 ([#129](https://github.com/djvcom/lambda-observability/pull/129))
+- *(deps)* bump serial_test in the rust-minor-patch group ([#103](https://github.com/djvcom/lambda-observability/pull/103))
+- *(deps)* bump the rust-minor-patch group with 3 updates ([#101](https://github.com/djvcom/lambda-observability/pull/101))
+- *(deps)* bump the rust-minor-patch group across 1 directory with 5 updates ([#89](https://github.com/djvcom/lambda-observability/pull/89))
+- *(deps)* bump opentelemetry-stdout from 0.31.0 to 0.32.0 ([#95](https://github.com/djvcom/lambda-observability/pull/95))
+- *(deps)* bump opentelemetry-semantic-conventions ([#90](https://github.com/djvcom/lambda-observability/pull/90))
+- *(deps)* bump the rust-minor-patch group with 2 updates ([#88](https://github.com/djvcom/lambda-observability/pull/88))
+
 ## [0.1.6](https://github.com/djvcom/lambda-observability/compare/opentelemetry-lambda-tower-v0.1.5...opentelemetry-lambda-tower-v0.1.6) - 2026-04-22
 
 ### Other
