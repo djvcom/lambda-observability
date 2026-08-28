@@ -7,7 +7,6 @@ use crate::aggregator::BatchedSignal;
 use crate::config::{Compression, ExporterConfig, Protocol};
 use prost::Message;
 use reqwest::Client;
-use serde::Serialize;
 use std::io::Write;
 use std::time::{Duration, Instant};
 
@@ -36,7 +35,8 @@ pub enum ExportResult {
     Success,
     /// Export failed after retries, data written to stdout.
     Fallback,
-    /// Export failed and no data was sent (no endpoint configured).
+    /// No endpoint is configured; the batch was written to stdout, the
+    /// intended destination in that mode.
     Skipped,
 }
 
@@ -132,9 +132,14 @@ impl OtlpExporter {
     /// once less than a useful amount remains. Use this whenever the caller
     /// operates inside a Lambda lifecycle window (the post-invocation hold
     /// or the SHUTDOWN grace period).
+    ///
+    /// Without a configured endpoint the batch goes straight to stdout, so
+    /// running without a collector still lands telemetry in CloudWatch
+    /// rather than dropping it silently.
     pub async fn export(&self, batch: BatchedSignal, deadline: Option<Instant>) -> ExportResult {
         if self.config.endpoint.is_none() {
-            tracing::debug!("No endpoint configured, skipping export");
+            tracing::debug!("No endpoint configured, emitting batch to stdout");
+            self.emit_to_stdout(&batch);
             return ExportResult::Skipped;
         }
 
@@ -298,6 +303,16 @@ impl OtlpExporter {
     fn emit_to_stdout(&self, batch: &BatchedSignal) {
         use std::io::Write as _;
 
+        let line = Self::fallback_line(batch);
+        // Use explicit I/O to handle broken pipes gracefully
+        let mut stdout = std::io::stdout().lock();
+        let _ = writeln!(stdout, "{}", line);
+    }
+
+    /// Renders the stdout fallback record for a batch: the full OTLP
+    /// request as JSON, or a summary when serialising it in full would
+    /// flood CloudWatch Logs.
+    fn fallback_line(batch: &BatchedSignal) -> String {
         let size_bytes = batch.size_bytes();
         if size_bytes > FALLBACK_MAX_BYTES {
             tracing::warn!(
@@ -305,44 +320,29 @@ impl OtlpExporter {
                 signal_type = batch.signal_type(),
                 "Batch too large for stdout fallback, emitting summary only"
             );
-            let summary = serde_json::json!({
+            return serde_json::json!({
                 "otlp_fallback": {
                     "type": batch.signal_type(),
                     "truncated": true,
                     "encoded_bytes": size_bytes,
                 }
-            });
-            let mut stdout = std::io::stdout().lock();
-            let _ = writeln!(stdout, "{}", summary);
-            return;
+            })
+            .to_string();
         }
 
-        let fallback = match batch {
-            BatchedSignal::Traces(req) => OtlpFallback {
-                otlp_fallback: OtlpFallbackData {
-                    signal_type: "traces",
-                    request: serde_json::to_value(req).unwrap_or_default(),
-                },
-            },
-            BatchedSignal::Metrics(req) => OtlpFallback {
-                otlp_fallback: OtlpFallbackData {
-                    signal_type: "metrics",
-                    request: serde_json::to_value(req).unwrap_or_default(),
-                },
-            },
-            BatchedSignal::Logs(req) => OtlpFallback {
-                otlp_fallback: OtlpFallbackData {
-                    signal_type: "logs",
-                    request: serde_json::to_value(req).unwrap_or_default(),
-                },
-            },
+        let request = match batch {
+            BatchedSignal::Traces(req) => serde_json::to_value(req).unwrap_or_default(),
+            BatchedSignal::Metrics(req) => serde_json::to_value(req).unwrap_or_default(),
+            BatchedSignal::Logs(req) => serde_json::to_value(req).unwrap_or_default(),
         };
 
-        if let Ok(json) = serde_json::to_string(&fallback) {
-            // Use explicit I/O to handle broken pipes gracefully
-            let mut stdout = std::io::stdout().lock();
-            let _ = writeln!(stdout, "{}", json);
-        }
+        serde_json::json!({
+            "otlp_fallback": {
+                "type": batch.signal_type(),
+                "request": request,
+            }
+        })
+        .to_string()
     }
 
     /// Returns whether an endpoint is configured.
@@ -354,18 +354,6 @@ impl OtlpExporter {
     pub fn endpoint(&self) -> Option<&str> {
         self.config.endpoint.as_deref()
     }
-}
-
-#[derive(Serialize)]
-struct OtlpFallback<'a> {
-    otlp_fallback: OtlpFallbackData<'a>,
-}
-
-#[derive(Serialize)]
-struct OtlpFallbackData<'a> {
-    #[serde(rename = "type")]
-    signal_type: &'a str,
-    request: serde_json::Value,
 }
 
 #[cfg(test)]
@@ -393,12 +381,49 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_export_no_endpoint_skips() {
+    async fn test_export_no_endpoint_emits_to_stdout() {
         let exporter = OtlpExporter::with_defaults().unwrap();
         let batch = make_trace_batch();
 
         let result = exporter.export(batch, None).await;
         assert_eq!(result, ExportResult::Skipped);
+    }
+
+    #[test]
+    fn test_fallback_line_contains_full_request() {
+        let line = OtlpExporter::fallback_line(&make_trace_batch());
+
+        let value: serde_json::Value = serde_json::from_str(&line).unwrap();
+        let fallback = &value["otlp_fallback"];
+        assert_eq!(fallback["type"], "traces");
+        assert!(fallback["request"]["resourceSpans"].is_array());
+        assert!(fallback["truncated"].is_null());
+    }
+
+    #[test]
+    fn test_fallback_line_summarises_oversized_batch() {
+        let big_span = Span {
+            name: "x".repeat(FALLBACK_MAX_BYTES + 1),
+            ..Default::default()
+        };
+        let batch = BatchedSignal::Traces(ExportTraceServiceRequest {
+            resource_spans: vec![ResourceSpans {
+                scope_spans: vec![ScopeSpans {
+                    spans: vec![big_span],
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+        });
+
+        let line = OtlpExporter::fallback_line(&batch);
+
+        let value: serde_json::Value = serde_json::from_str(&line).unwrap();
+        let fallback = &value["otlp_fallback"];
+        assert_eq!(fallback["type"], "traces");
+        assert_eq!(fallback["truncated"], true);
+        assert!(fallback["request"].is_null());
+        assert!(line.len() < 1024, "the summary record must stay small");
     }
 
     #[test]
