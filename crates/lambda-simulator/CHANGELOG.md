@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0](https://github.com/djvcom/lambda-observability/compare/lambda-simulator-v0.1.8...lambda-simulator-v0.2.0) - 2026-08-28
+
+### Changed
+
+- The `ServerStart` and `BindError` variants carry the underlying `std::io::Error` as a source, and `ProcessError`/`FreezeError` derive their `Display` implementations. These changes shipped in 0.1.8 despite breaking compatibility within the 0.1 range; 0.1.8 has been yanked and the same code is republished here under the correct version.
+
 ## [0.1.8](https://github.com/djvcom/lambda-observability/compare/lambda-simulator-v0.1.7...lambda-simulator-v0.1.8) - 2026-08-28
 
 ### Other
