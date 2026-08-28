@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.7](https://github.com/djvcom/lambda-observability/compare/lambda-simulator-v0.1.6...lambda-simulator-v0.1.7) - 2026-08-28
+
+### Added
+
+- align extension export behaviour with the Lambda lifecycle ([#115](https://github.com/djvcom/lambda-observability/pull/115))
+
+### Other
+
+- *(deps)* bump the rust-minor-patch group across 1 directory with 16 updates ([#127](https://github.com/djvcom/lambda-observability/pull/127))
+- *(deps)* bump regex in the rust-minor-patch group ([#106](https://github.com/djvcom/lambda-observability/pull/106))
+- *(deps)* bump serial_test in the rust-minor-patch group ([#103](https://github.com/djvcom/lambda-observability/pull/103))
+- *(deps)* bump the rust-minor-patch group across 1 directory with 5 updates ([#89](https://github.com/djvcom/lambda-observability/pull/89))
+- *(deps)* bump the rust-minor-patch group with 2 updates ([#88](https://github.com/djvcom/lambda-observability/pull/88))
+
 ## [0.1.6](https://github.com/djvcom/lambda-observability/compare/lambda-simulator-v0.1.5...lambda-simulator-v0.1.6) - 2026-04-22
 
 ### Security
