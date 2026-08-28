@@ -103,10 +103,11 @@ async fn test_e2e_trace_propagation_and_platform_telemetry() {
 
     let extension_runtime_api = format!("http://{}", runtime_api_base);
 
-    // The variable only needs to be set while the lambda_extension client is
-    // constructed, which has happened once registration is observed.
+    // The variable is scoped rather than set for the whole test because the
+    // function runtime scope below needs a different value; the extension
+    // reads it during registration and again while processing SHUTDOWN.
     let extension_handle = async_with_vars(
-        [("AWS_LAMBDA_RUNTIME_API", Some(extension_runtime_api))],
+        [("AWS_LAMBDA_RUNTIME_API", Some(extension_runtime_api.clone()))],
         async {
             let handle = tokio::spawn(async move {
                 tracing::debug!("Starting extension runtime");
@@ -302,11 +303,16 @@ async fn test_e2e_trace_propagation_and_platform_telemetry() {
 
     // Graceful shutdown triggers SHUTDOWN event to extensions, causing final flush
     println!("Triggering graceful shutdown...");
-    simulator.graceful_shutdown(ShutdownReason::Spindown).await;
+    async_with_vars(
+        [("AWS_LAMBDA_RUNTIME_API", Some(extension_runtime_api))],
+        async {
+            simulator.graceful_shutdown(ShutdownReason::Spindown).await;
 
-    // Wait for extension to process shutdown and complete its final flush
-    println!("Waiting for extension to complete shutdown...");
-    let _ = tokio::time::timeout(Duration::from_secs(5), extension_handle).await;
+            println!("Waiting for extension to complete shutdown...");
+            let _ = tokio::time::timeout(Duration::from_secs(5), extension_handle).await;
+        },
+    )
+    .await;
 
     // Wait for spans to arrive at collector using mock-collector's built-in waiting
     println!("Waiting for spans at collector...");
@@ -484,10 +490,11 @@ async fn test_e2e_missing_traceparent_creates_new_trace() {
 
     let extension_runtime_api = format!("http://{}", runtime_api_base);
 
-    // The variable only needs to be set while the lambda_extension client is
-    // constructed, which has happened once registration is observed.
+    // The variable is scoped rather than set for the whole test because the
+    // function runtime scope below needs a different value; the extension
+    // reads it during registration and again while processing SHUTDOWN.
     let extension_handle = async_with_vars(
-        [("AWS_LAMBDA_RUNTIME_API", Some(extension_runtime_api))],
+        [("AWS_LAMBDA_RUNTIME_API", Some(extension_runtime_api.clone()))],
         async {
             let handle = tokio::spawn(async move {
                 let runtime = RuntimeBuilder::new().config(extension_config).build();
@@ -570,10 +577,15 @@ async fn test_e2e_missing_traceparent_creates_new_trace() {
     .await;
 
     // Graceful shutdown triggers SHUTDOWN event to extension, causing final flush
-    simulator.graceful_shutdown(ShutdownReason::Spindown).await;
+    async_with_vars(
+        [("AWS_LAMBDA_RUNTIME_API", Some(extension_runtime_api))],
+        async {
+            simulator.graceful_shutdown(ShutdownReason::Spindown).await;
 
-    // Wait for extension to complete shutdown
-    let _ = tokio::time::timeout(Duration::from_secs(5), extension_handle).await;
+            let _ = tokio::time::timeout(Duration::from_secs(5), extension_handle).await;
+        },
+    )
+    .await;
 
     // Wait for spans to arrive at collector using mock-collector's built-in waiting
     let _ = collector.wait_for_spans(1, Duration::from_secs(5)).await;

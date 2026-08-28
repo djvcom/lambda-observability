@@ -672,10 +672,11 @@ async fn test_simulator_shutdown_triggers_extension_shutdown() {
 
     let extension_runtime_api = format!("http://{}", runtime_api_base);
 
-    // The variable only needs to be set while the lambda_extension client is
-    // constructed, which has happened once registration is observed.
+    // The variable is scoped rather than set for the whole test because other
+    // scopes need it to hold different values; the extension reads it during
+    // registration and again while processing SHUTDOWN.
     let extension_handle = temp_env::async_with_vars(
-        [("AWS_LAMBDA_RUNTIME_API", Some(extension_runtime_api))],
+        [("AWS_LAMBDA_RUNTIME_API", Some(extension_runtime_api.clone()))],
         async {
             let handle = tokio::spawn(async move {
                 let runtime = RuntimeBuilder::new().config(config).build();
@@ -699,13 +700,18 @@ async fn test_simulator_shutdown_triggers_extension_shutdown() {
     let extensions = simulator.get_registered_extensions().await;
     assert!(!extensions.is_empty(), "Should have registered extension");
 
-    // Trigger graceful shutdown
-    simulator.graceful_shutdown(ShutdownReason::Spindown).await;
-
     // Extension should receive SHUTDOWN event and exit cleanly
-    let result = tokio::time::timeout(Duration::from_secs(5), extension_handle)
-        .await
-        .expect("Extension should exit within timeout");
+    let result = temp_env::async_with_vars(
+        [("AWS_LAMBDA_RUNTIME_API", Some(extension_runtime_api))],
+        async {
+            simulator.graceful_shutdown(ShutdownReason::Spindown).await;
+
+            tokio::time::timeout(Duration::from_secs(5), extension_handle)
+                .await
+                .expect("Extension should exit within timeout")
+        },
+    )
+    .await;
 
     assert!(
         result.is_ok(),
