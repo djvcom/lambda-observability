@@ -46,7 +46,6 @@ hex = "0.4.3"
 lambda-extension = "1.0.4"
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 opentelemetry-semantic-conventions = { version = "0.32", features = ["semconv_experimental"] }
-anyhow = "1.0.102"
 rand = "0.10.1"
 
 [dev-dependencies]

@@ -63,14 +63,13 @@ impl ExtensionRuntime {
     ///
     /// Returns an error if any component fails to start or if the extension
     /// cannot register with Lambda.
-    pub async fn run(self) -> Result<(), RuntimeError> {
+    pub async fn run(self) -> crate::error::Result<()> {
         tracing::debug!("Starting extension with lambda_extension crate");
 
         // Create shared state for services
         // Convert SDK Resource to proto Resource for internal use
         let proto_resource = to_proto_resource(&self.resource);
-        let (state, shutdown_rx) = ExtensionState::new(self.config.clone(), proto_resource)
-            .map_err(|e| RuntimeError::StateInit(Box::new(e)))?;
+        let (state, shutdown_rx) = ExtensionState::new(self.config.clone(), proto_resource)?;
         let state = Arc::new(state);
         tracing::debug!("Extension state created");
 
@@ -139,7 +138,7 @@ impl ExtensionRuntime {
         self.cancel_token.cancel();
         let _ = tokio::time::timeout(Duration::from_secs(2), receiver_task).await;
 
-        result
+        Ok(result?)
     }
 }
 
@@ -147,10 +146,6 @@ impl ExtensionRuntime {
 #[non_exhaustive]
 #[derive(Debug, thiserror::Error)]
 pub enum RuntimeError {
-    /// Failed to create extension state during initialisation.
-    #[error("failed to create extension state")]
-    StateInit(#[source] Box<crate::exporter::ExportError>),
-
     /// Failed to start OTLP receiver.
     #[error("failed to start OTLP receiver")]
     ReceiverStart(#[source] std::io::Error),

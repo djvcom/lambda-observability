@@ -7,10 +7,10 @@
 //! # Example
 //!
 //! ```no_run
-//! use opentelemetry_lambda_extension::{Config, RuntimeBuilder};
+//! use opentelemetry_lambda_extension::{Config, Result, RuntimeBuilder};
 //!
 //! #[tokio::main]
-//! async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! async fn main() -> Result<()> {
 //!     let config = Config::load()?;
 //!     let runtime = RuntimeBuilder::new().config(config).build();
 //!     runtime.run().await?;
@@ -50,7 +50,7 @@ pub use resource::{ResourceBuilder, detect_resource};
 pub use runtime::{ExtensionRuntime, RuntimeBuilder, RuntimeError};
 pub use service::{EventsService, ExtensionState, TelemetryService};
 pub use telemetry::{
-    ReportMetrics, ReportRecord, RuntimeDoneRecord, StartRecord, TelemetryError, TelemetryEvent,
-    TelemetryListener, TelemetrySubscription, TelemetryType,
+    ReportMetrics, ReportRecord, RuntimeDoneRecord, StartRecord, TelemetryEvent, TelemetryListener,
+    TelemetrySubscription, TelemetryType,
 };
 pub use tracing::{W3CTraceContext, XRayTraceHeader};

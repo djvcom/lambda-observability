@@ -357,24 +357,6 @@ pub struct ExtensionRecord {
     pub events: Vec<String>,
 }
 
-/// Error from Telemetry API operations.
-#[non_exhaustive]
-#[derive(Debug)]
-pub enum TelemetryError {
-    /// Failed to parse telemetry event.
-    Parse(String),
-}
-
-impl std::fmt::Display for TelemetryError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            TelemetryError::Parse(msg) => write!(f, "Parse error: {}", msg),
-        }
-    }
-}
-
-impl std::error::Error for TelemetryError {}
-
 /// HTTP listener for receiving Telemetry API events.
 pub struct TelemetryListener {
     port: u16,
@@ -643,12 +625,6 @@ mod tests {
 
         // In non-Lambda environment (no AWS_LAMBDA_FUNCTION_NAME), uses 127.0.0.1
         assert_eq!(listener.listener_uri(), "http://127.0.0.1:9999");
-    }
-
-    #[test]
-    fn test_telemetry_error_display() {
-        let err = TelemetryError::Parse("parse error".to_string());
-        assert!(format!("{}", err).contains("parse error"));
     }
 
     #[test]

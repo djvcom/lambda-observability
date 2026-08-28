@@ -127,7 +127,7 @@ impl ExtensionState {
     pub fn new(
         config: Config,
         resource: Resource,
-    ) -> Result<(Self, oneshot::Receiver<()>), crate::exporter::ExportError> {
+    ) -> crate::error::Result<(Self, oneshot::Receiver<()>)> {
         let exporter = OtlpExporter::new(config.exporter.clone())?;
         let (shutdown_tx, shutdown_rx) = oneshot::channel();
 
