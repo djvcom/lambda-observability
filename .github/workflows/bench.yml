@@ -18,7 +18,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -33,7 +33,7 @@ jobs:
           --output-format bencher | tee bench-output.txt
 
       - name: Restore baseline
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: bench-baseline
           key: bench-baseline-${{ github.sha }}
@@ -48,7 +48,7 @@ jobs:
           external-data-json-path: bench-baseline/benchmark-data.json
 
       - name: Save baseline
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: bench-baseline
           key: bench-baseline-${{ github.sha }}
@@ -71,7 +71,7 @@ jobs:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -86,7 +86,7 @@ jobs:
           --output-format bencher | tee bench-output.txt
 
       - name: Restore baseline from main
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: bench-baseline
           key: bench-baseline-${{ github.sha }}
