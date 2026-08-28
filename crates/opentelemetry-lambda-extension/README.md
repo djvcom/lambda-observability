@@ -149,6 +149,7 @@ in milliseconds.
 | `LAMBDA_OTEL_FLUSH_STRATEGY` | `default` | `default`, `end`, `periodic` or `continuous` |
 | `LAMBDA_OTEL_FLUSH_INTERVAL` | `20000` | Periodic flush interval |
 | `LAMBDA_OTEL_FLUSH_COMPLETION_WAIT` | `auto` | `auto`, `off`, or a cap in milliseconds on how long `/next` is held awaiting completion |
+| `LAMBDA_OTEL_FLUSH_INVOKE_BUDGET` | `3000` | Post-invocation flush budget, also reserved before the invocation deadline while holding `/next` (capped at half the remaining time). Raising it delays back-to-back warm invocations, never the response already sent; size it to cover a round trip to the endpoint |
 | `LAMBDA_OTEL_FLUSH_MAX_BATCH_BYTES` | `4194304` | Encoded bytes per export batch |
 | `LAMBDA_OTEL_FLUSH_MAX_BATCH_ENTRIES` | `1000` | Signals per export batch |
 | `LAMBDA_OTEL_FLUSH_MAX_QUEUE_BYTES` | 10% of function memory, clamped to 4–32 MiB | Shared byte budget across all buffered telemetry |
@@ -179,6 +180,7 @@ http_enabled = true
 strategy = "default"
 interval = 20000
 completion_wait = "auto"
+invoke_budget = 3000
 max_queue_bytes = 16777216
 max_queue_entries = 4096
 ```

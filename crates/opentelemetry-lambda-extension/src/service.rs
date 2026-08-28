@@ -31,18 +31,6 @@ use std::time::{Duration, Instant};
 use tokio::sync::{Mutex, RwLock, oneshot};
 use tower::Service;
 
-/// Safety margin subtracted from the invocation deadline when holding
-/// `/next`, leaving room for the flush itself before the function times out.
-const HOLD_DEADLINE_MARGIN: Duration = Duration::from_secs(1);
-
-/// Budget granted to each flush in the invocation path. This is the margin
-/// reserved by [`HOLD_DEADLINE_MARGIN`]: the hold releases early enough
-/// that the flush can spend this long. The budget is measured from when the
-/// flush starts, not from the invocation deadline — the deadline bounds the
-/// runtime's handler, not the extension, and the environment stays thawed
-/// while the INVOKE handler is still running.
-const INVOKE_FLUSH_BUDGET: Duration = HOLD_DEADLINE_MARGIN;
-
 /// Grace period after a completion signal for signals already accepted by
 /// the receiver to reach the aggregator before the post-invoke flush reads it.
 const COMPLETION_SETTLE_DELAY: Duration = Duration::from_millis(20);
@@ -50,9 +38,23 @@ const COMPLETION_SETTLE_DELAY: Duration = Duration::from_millis(20);
 /// Computes the instant until which `/next` may be held for the invocation
 /// with the given epoch-millisecond deadline.
 ///
+/// `flush_margin` is reserved before the deadline for the flush itself:
+/// the hold releases early enough that the post-invocation flush can spend
+/// that long. The reservation is capped at half the remaining time so a
+/// generous flush budget cannot swallow the whole window of a function
+/// with a short timeout — a margin is pointless if reserving it means
+/// never holding at all. The flush budget itself is measured from when the
+/// flush starts, not from the invocation deadline — the deadline bounds
+/// the runtime's handler, not the extension, and the environment stays
+/// thawed while the INVOKE handler is still running.
+///
 /// Returns `None` when holding is disabled by configuration or there is no
 /// usable window before the deadline.
-fn hold_deadline(deadline_ms: u64, completion_wait: CompletionWait) -> Option<Instant> {
+fn hold_deadline(
+    deadline_ms: u64,
+    completion_wait: CompletionWait,
+    flush_margin: Duration,
+) -> Option<Instant> {
     let cap = match completion_wait {
         CompletionWait::Off => return None,
         CompletionWait::Auto => None,
@@ -64,8 +66,8 @@ fn hold_deadline(deadline_ms: u64, completion_wait: CompletionWait) -> Option<In
         .unwrap_or_default()
         .as_millis() as u64;
 
-    let remaining = Duration::from_millis(deadline_ms.saturating_sub(now_ms))
-        .saturating_sub(HOLD_DEADLINE_MARGIN);
+    let until_deadline = Duration::from_millis(deadline_ms.saturating_sub(now_ms));
+    let remaining = until_deadline.saturating_sub(flush_margin.min(until_deadline / 2));
     if remaining.is_zero() {
         return None;
     }
@@ -158,20 +160,35 @@ impl ExtensionState {
 
     /// Performs a flush of all pending signals to the exporter.
     ///
-    /// The optional `deadline` bounds the total time spent exporting; see
-    /// [`OtlpExporter::export`].
+    /// Batches export concurrently: the flush window is dominated by
+    /// network round trips, so exporting the signal types sequentially
+    /// would let the first (typically traces) starve the rest of the
+    /// deadline budget. The optional `deadline` bounds the total time
+    /// spent exporting; see [`OtlpExporter::export`].
     pub async fn flush_all(&self, deadline: Option<Instant>) {
         let batches = self.aggregator.get_all_batches().await;
-        let mut flush_manager = self.flush_manager.lock().await;
+        if batches.is_empty() {
+            return;
+        }
 
+        let mut exports = tokio::task::JoinSet::new();
         for batch in batches {
-            let result = self.exporter.export(batch, deadline).await;
+            let exporter = Arc::clone(&self.exporter);
+            exports.spawn(async move { exporter.export(batch, deadline).await });
+        }
+
+        let mut flush_manager = self.flush_manager.lock().await;
+        while let Some(result) = exports.join_next().await {
             match result {
-                crate::exporter::ExportResult::Success => {
+                Ok(crate::exporter::ExportResult::Success)
+                | Ok(crate::exporter::ExportResult::Skipped) => {
                     flush_manager.record_flush();
                 }
-                crate::exporter::ExportResult::Fallback
-                | crate::exporter::ExportResult::Skipped => {
+                Ok(_) => {
+                    flush_manager.record_flush_timeout();
+                }
+                Err(error) => {
+                    tracing::warn!(%error, "Export task failed");
                     flush_manager.record_flush_timeout();
                 }
             }
@@ -217,7 +234,8 @@ impl ExtensionState {
                     };
                     if should_flush {
                         tracing::debug!(pending, "Periodic flush during held invocation");
-                        self.flush_all(Some(Instant::now() + INVOKE_FLUSH_BUDGET)).await;
+                        self.flush_all(Some(Instant::now() + self.config.flush.invoke_budget))
+                            .await;
                     }
                 }
             }
@@ -262,7 +280,7 @@ impl ExtensionState {
 
         if should_flush {
             tracing::debug!(pending, "Flushing in post-invocation window");
-            self.flush_all(Some(Instant::now() + INVOKE_FLUSH_BUDGET))
+            self.flush_all(Some(Instant::now() + self.config.flush.invoke_budget))
                 .await;
         }
     }
@@ -354,7 +372,11 @@ impl ExtensionState {
 
         self.flush_manager.lock().await.record_invocation();
 
-        let deadline = hold_deadline(invoke.deadline_ms, self.config.flush.completion_wait);
+        let deadline = hold_deadline(
+            invoke.deadline_ms,
+            self.config.flush.completion_wait,
+            self.config.flush.invoke_budget,
+        );
         self.completion.begin(
             invoke.request_id.clone(),
             deadline.unwrap_or_else(Instant::now),
@@ -619,6 +641,152 @@ fn convert_telemetry_events(events: Vec<LambdaTelemetry>) -> Vec<crate::telemetr
 mod tests {
     use super::*;
     use lambda_extension::LambdaTelemetry;
+    use opentelemetry_proto::tonic::collector::logs::v1::ExportLogsServiceRequest;
+    use opentelemetry_proto::tonic::collector::metrics::v1::ExportMetricsServiceRequest;
+    use opentelemetry_proto::tonic::collector::trace::v1::ExportTraceServiceRequest;
+
+    fn proto_resource() -> Resource {
+        crate::resource::to_proto_resource(&crate::resource::detect_resource())
+    }
+
+    fn trace_signal() -> Signal {
+        Signal::Traces(ExportTraceServiceRequest {
+            resource_spans: vec![opentelemetry_proto::tonic::trace::v1::ResourceSpans::default()],
+        })
+    }
+
+    fn metrics_signal() -> Signal {
+        Signal::Metrics(ExportMetricsServiceRequest {
+            resource_metrics: vec![
+                opentelemetry_proto::tonic::metrics::v1::ResourceMetrics::default(),
+            ],
+        })
+    }
+
+    fn logs_signal() -> Signal {
+        Signal::Logs(ExportLogsServiceRequest {
+            resource_logs: vec![opentelemetry_proto::tonic::logs::v1::ResourceLogs::default()],
+        })
+    }
+
+    /// Accepts connections and answers each request with an empty 200 after
+    /// `delay`, standing in for a collector with real network latency.
+    async fn spawn_slow_collector(delay: Duration) -> std::net::SocketAddr {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            loop {
+                let Ok((mut socket, _)) = listener.accept().await else {
+                    break;
+                };
+                tokio::spawn(async move {
+                    use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+                    let mut buf = [0u8; 16384];
+                    let _ = socket.read(&mut buf).await;
+                    tokio::time::sleep(delay).await;
+                    let _ = socket
+                        .write_all(
+                            b"HTTP/1.1 200 OK\r\ncontent-length: 0\r\nconnection: close\r\n\r\n",
+                        )
+                        .await;
+                });
+            }
+        });
+        addr
+    }
+
+    #[tokio::test]
+    async fn flush_all_exports_batches_concurrently() {
+        let delay = Duration::from_millis(300);
+        let addr = spawn_slow_collector(delay).await;
+
+        let config = Config::builder()
+            .exporter_endpoint(format!("http://{addr}"))
+            .build();
+        let (state, _shutdown_rx) = ExtensionState::new(config, proto_resource()).unwrap();
+
+        state.aggregator.add(trace_signal()).await;
+        state.aggregator.add(metrics_signal()).await;
+        state.aggregator.add(logs_signal()).await;
+
+        let started = Instant::now();
+        state
+            .flush_all(Some(Instant::now() + Duration::from_secs(5)))
+            .await;
+        let elapsed = started.elapsed();
+
+        assert!(
+            elapsed < delay * 2,
+            "three exports of {delay:?} each must overlap, took {elapsed:?}"
+        );
+        assert_eq!(
+            state.flush_manager.lock().await.consecutive_timeout_count(),
+            0
+        );
+        assert_eq!(state.aggregator.pending_count().await, 0);
+    }
+
+    fn epoch_ms_from_now(offset: Duration) -> u64 {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default();
+        (now + offset).as_millis() as u64
+    }
+
+    #[test]
+    fn hold_deadline_reserves_the_flush_margin() {
+        let deadline_ms = epoch_ms_from_now(Duration::from_secs(30));
+        let margin = Duration::from_secs(3);
+
+        let hold = hold_deadline(deadline_ms, CompletionWait::Auto, margin)
+            .expect("a long deadline must leave a hold window");
+
+        let window = hold.saturating_duration_since(Instant::now());
+        assert!(window > Duration::from_secs(26), "window was {window:?}");
+        assert!(window < Duration::from_secs(28), "window was {window:?}");
+    }
+
+    #[test]
+    fn hold_deadline_caps_the_margin_for_short_timeouts() {
+        let deadline_ms = epoch_ms_from_now(Duration::from_secs(3));
+        let margin = Duration::from_secs(3);
+
+        let hold = hold_deadline(deadline_ms, CompletionWait::Auto, margin)
+            .expect("the margin must not swallow a short function's whole window");
+
+        let window = hold.saturating_duration_since(Instant::now());
+        assert!(
+            window > Duration::from_millis(1300),
+            "window was {window:?}"
+        );
+        assert!(
+            window < Duration::from_millis(1600),
+            "window was {window:?}"
+        );
+    }
+
+    #[test]
+    fn hold_deadline_disabled_by_completion_wait_off() {
+        let deadline_ms = epoch_ms_from_now(Duration::from_secs(30));
+        let hold = hold_deadline(deadline_ms, CompletionWait::Off, Duration::from_secs(3));
+        assert!(hold.is_none());
+    }
+
+    #[tokio::test]
+    async fn flush_all_without_endpoint_records_success() {
+        let (state, _shutdown_rx) =
+            ExtensionState::new(Config::default(), proto_resource()).unwrap();
+
+        state.aggregator.add(trace_signal()).await;
+        state.flush_all(None).await;
+
+        assert_eq!(
+            state.flush_manager.lock().await.consecutive_timeout_count(),
+            0,
+            "stdout emission is the intended destination without an endpoint, not a failure"
+        );
+        assert_eq!(state.aggregator.pending_count().await, 0);
+    }
 
     #[test]
     fn test_extension_state_creation() {

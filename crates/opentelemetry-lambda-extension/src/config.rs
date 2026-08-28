@@ -219,6 +219,19 @@ pub struct FlushConfig {
     pub max_batch_entries: usize,
     /// How long to hold `/next` waiting for invocation completion.
     pub completion_wait: CompletionWait,
+    /// Budget in milliseconds for flushes in the post-invocation window,
+    /// and the margin reserved before the invocation deadline when holding
+    /// `/next` (capped at half the remaining time, so functions with short
+    /// timeouts still get a hold window).
+    ///
+    /// This bounds the total time spent exporting after an invocation
+    /// completes. Raising it holds `/next` longer, which delays the start
+    /// of a back-to-back warm invocation — never the response already sent
+    /// to the client. Size it to cover a round trip to the configured
+    /// endpoint including connection setup; remote (non-localhost)
+    /// collectors typically need a few seconds.
+    #[serde(with = "duration_ms")]
+    pub invoke_budget: Duration,
     /// Maximum bytes of encoded telemetry buffered across all signal
     /// queues. When the budget is exceeded, the oldest signals are dropped.
     ///
@@ -240,6 +253,7 @@ impl Default for FlushConfig {
             max_batch_bytes: 4 * 1024 * 1024,
             max_batch_entries: 1000,
             completion_wait: CompletionWait::Auto,
+            invoke_budget: Duration::from_secs(3),
             max_queue_bytes: default_max_queue_bytes(),
             max_queue_entries: 4096,
         }
@@ -355,6 +369,12 @@ impl ConfigBuilder {
     /// Sets the flush interval.
     pub fn flush_interval(mut self, interval: Duration) -> Self {
         self.config.flush.interval = interval;
+        self
+    }
+
+    /// Sets the post-invocation flush budget.
+    pub fn flush_invoke_budget(mut self, budget: Duration) -> Self {
+        self.config.flush.invoke_budget = budget;
         self
     }
 
@@ -538,6 +558,7 @@ mod tests {
 
         assert_eq!(config.flush.strategy, FlushStrategy::Default);
         assert_eq!(config.flush.interval, Duration::from_secs(20));
+        assert_eq!(config.flush.invoke_budget, Duration::from_secs(3));
 
         assert_eq!(
             config.correlation.max_correlation_delay,
@@ -596,6 +617,7 @@ http_port = 5318
 [flush]
 strategy = "periodic"
 interval = 15000
+invoke_budget = 2500
 
 [correlation]
 max_correlation_delay = 300
@@ -616,6 +638,7 @@ emit_orphaned_spans = false
         assert_eq!(config.receiver.http_port, 5318);
         assert_eq!(config.flush.strategy, FlushStrategy::Periodic);
         assert_eq!(config.flush.interval, Duration::from_secs(15));
+        assert_eq!(config.flush.invoke_budget, Duration::from_millis(2500));
         assert_eq!(
             config.correlation.max_correlation_delay,
             Duration::from_millis(300)
@@ -639,6 +662,7 @@ emit_orphaned_spans = false
             [
                 ("LAMBDA_OTEL_RECEIVER_HTTP_PORT", Some("24418")),
                 ("LAMBDA_OTEL_FLUSH_MAX_BATCH_ENTRIES", Some("42")),
+                ("LAMBDA_OTEL_FLUSH_INVOKE_BUDGET", Some("4500")),
                 ("LAMBDA_OTEL_TELEMETRY_API_BUFFER_SIZE", Some("77")),
                 ("LAMBDA_OTEL_EXPORTER_ENDPOINT", Some("http://env:4318")),
             ],
@@ -647,6 +671,7 @@ emit_orphaned_spans = false
 
                 assert_eq!(config.receiver.http_port, 24418);
                 assert_eq!(config.flush.max_batch_entries, 42);
+                assert_eq!(config.flush.invoke_budget, Duration::from_millis(4500));
                 assert_eq!(config.telemetry_api.buffer_size, 77);
                 assert_eq!(
                     config.exporter.endpoint,
