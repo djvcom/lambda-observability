@@ -70,6 +70,10 @@ pub enum ExportError {
     #[error("export deadline exceeded")]
     DeadlineExceeded,
 
+    /// TLS configuration for the HTTP client failed.
+    #[error("failed to configure TLS")]
+    Tls(#[source] Box<dyn std::error::Error + Send + Sync>),
+
     /// The configured protocol is not supported.
     #[error("the {0:?} protocol is not supported; set exporter.protocol to \"http\"")]
     UnsupportedProtocol(Protocol),
@@ -134,10 +138,27 @@ impl OtlpExporter {
             .get_or_try_init(|| async {
                 Client::builder()
                     .timeout(self.config.timeout)
+                    .tls_backend_preconfigured(Self::tls_config()?)
                     .build()
                     .map_err(ExportError::Http)
             })
             .await
+    }
+
+    /// Builds a rustls configuration using the `ring` provider and the
+    /// embedded webpki root certificates.
+    ///
+    /// Embedded roots avoid scanning the system certificate store, which
+    /// reads and parses CA bundles from the filesystem on every cold start.
+    fn tls_config() -> Result<rustls::ClientConfig, ExportError> {
+        let provider = std::sync::Arc::new(rustls::crypto::ring::default_provider());
+        let mut roots = rustls::RootCertStore::empty();
+        roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+
+        rustls::ClientConfig::builder_with_provider(provider)
+            .with_safe_default_protocol_versions()
+            .map(|builder| builder.with_root_certificates(roots).with_no_client_auth())
+            .map_err(|e| ExportError::Tls(Box::new(e)))
     }
 
     /// Exports a batch of signals.

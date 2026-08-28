@@ -102,6 +102,8 @@ pub(crate) struct TelemetryState {
 impl TelemetryState {
     /// Creates a new telemetry state.
     pub fn new() -> Self {
+        crate::ensure_default_crypto_provider();
+
         // Create HTTP/1.1 only client for telemetry delivery
         // The lambda_extension crate uses a simple hyper http1 server
         let http1_client = reqwest::Client::builder()

@@ -49,7 +49,7 @@ async fn test_receiver_accepts_protobuf_traces() {
         }],
     };
 
-    let client = reqwest::Client::new();
+    let client = common::http_client();
     let response = client
         .post("http://127.0.0.1:14318/v1/traces")
         .header("Content-Type", "application/x-protobuf")
@@ -105,7 +105,7 @@ async fn test_receiver_accepts_json_traces() {
 
     let json = r#"{"resourceSpans":[{"scopeSpans":[{"spans":[{"name":"json-span","traceId":"0102030405060708090a0b0c0d0e0f10","spanId":"0102030405060708"}]}]}]}"#;
 
-    let client = reqwest::Client::new();
+    let client = common::http_client();
     let response = client
         .post("http://127.0.0.1:14319/v1/traces")
         .header("Content-Type", "application/json")
@@ -160,7 +160,7 @@ async fn test_receiver_backpressure() {
         .expect("Receiver failed to start");
 
     let request = ExportTraceServiceRequest::default();
-    let client = reqwest::Client::new();
+    let client = common::http_client();
 
     client
         .post("http://127.0.0.1:14320/v1/traces")
@@ -208,7 +208,7 @@ async fn test_receiver_invalid_protobuf() {
         .await
         .expect("Receiver failed to start");
 
-    let client = reqwest::Client::new();
+    let client = common::http_client();
     let response = client
         .post("http://127.0.0.1:14321/v1/traces")
         .header("Content-Type", "application/x-protobuf")
@@ -248,7 +248,7 @@ async fn test_receiver_handles_metrics() {
 
     let json = r#"{"resourceMetrics":[]}"#;
 
-    let client = reqwest::Client::new();
+    let client = common::http_client();
     let response = client
         .post("http://127.0.0.1:14322/v1/metrics")
         .header("Content-Type", "application/json")
@@ -295,7 +295,7 @@ async fn test_receiver_handles_logs() {
 
     let json = r#"{"resourceLogs":[]}"#;
 
-    let client = reqwest::Client::new();
+    let client = common::http_client();
     let response = client
         .post("http://127.0.0.1:14323/v1/logs")
         .header("Content-Type", "application/json")

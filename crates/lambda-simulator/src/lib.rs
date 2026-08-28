@@ -161,6 +161,20 @@ pub(crate) mod telemetry_api;
 pub(crate) mod telemetry_state;
 
 pub use error::{BuilderError, RuntimeError, SimulatorError, SimulatorResult};
+
+/// Installs the `ring` crypto provider as the process default when none is
+/// installed yet.
+///
+/// The simulator only talks plain HTTP, but when the surrounding build
+/// compiles reqwest with a rustls backend and no crypto provider (for
+/// example through workspace feature unification with a crate that uses
+/// `rustls-no-provider`), constructing any reqwest client panics. Calling
+/// this before building a client keeps construction infallible regardless
+/// of the feature set the final build resolves. It is safe to call from
+/// multiple threads and a no-op once any provider is installed.
+pub fn ensure_default_crypto_provider() {
+    let _ = rustls::crypto::ring::default_provider().install_default();
+}
 pub use extension::{EventType, ExtensionId, LifecycleEvent, RegisteredExtension, ShutdownReason};
 pub use freeze::{FreezeError, FreezeMode, FreezeState};
 pub use invocation::{

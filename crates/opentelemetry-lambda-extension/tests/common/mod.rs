@@ -14,6 +14,17 @@ pub mod harness;
 /// against reqwest, serde, and IO errors without lossy string conversion.
 pub type TestResult<T = ()> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
+/// Builds a plain HTTP client for talking to local test servers.
+///
+/// Installs a default crypto provider first: the workspace compiles
+/// reqwest with `rustls-no-provider`, under which client construction
+/// panics when no process-wide provider is installed.
+#[allow(dead_code)]
+pub fn http_client() -> reqwest::Client {
+    lambda_simulator::ensure_default_crypto_provider();
+    reqwest::Client::new()
+}
+
 /// Polls an HTTP health endpoint until it responds successfully.
 ///
 /// This is the preferred method for waiting for HTTP servers to start in tests,
@@ -38,6 +49,7 @@ pub async fn wait_for_http_ready(port: u16, timeout: Duration) -> TestResult {
     let deadline = Instant::now() + timeout;
     let url = format!("http://127.0.0.1:{}/health", port);
 
+    lambda_simulator::ensure_default_crypto_provider();
     let client = reqwest::Client::builder()
         .timeout(Duration::from_millis(100))
         .build()?;
