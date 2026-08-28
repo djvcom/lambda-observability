@@ -108,12 +108,14 @@ fn bench_converter_with_resource(c: &mut Criterion) {
                 value: Some(AnyValue {
                     value: Some(any_value::Value::StringValue("test-function".to_string())),
                 }),
+                ..Default::default()
             },
             KeyValue {
                 key: "faas.name".to_string(),
                 value: Some(AnyValue {
                     value: Some(any_value::Value::StringValue("my-lambda".to_string())),
                 }),
+                ..Default::default()
             },
         ],
         ..Default::default()
