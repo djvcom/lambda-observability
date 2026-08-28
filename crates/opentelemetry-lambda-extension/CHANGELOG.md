@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0](https://github.com/djvcom/lambda-observability/compare/opentelemetry-lambda-extension-v0.1.9...opentelemetry-lambda-extension-v0.2.0) - 2026-08-28
+
+### Changed
+
+- `TelemetryError` and `RuntimeError::StateInit` are removed, and `Config::load`, `Config::load_from_path`, `ExtensionRuntime::run` and `ExtensionState::new` return the crate `Result`. These changes shipped in 0.1.9 despite breaking compatibility within the 0.1 range; 0.1.9 has been yanked and the same code is republished here under the correct version.
+
 ## [0.1.9](https://github.com/djvcom/lambda-observability/compare/opentelemetry-lambda-extension-v0.1.8...opentelemetry-lambda-extension-v0.1.9) - 2026-08-28
 
 ### Other
