@@ -1378,7 +1378,7 @@ dependencies = [
  "mock-collector",
  "nix",
  "opentelemetry 0.32.0",
- "opentelemetry-otlp",
+ "opentelemetry-otlp 0.33.0",
  "opentelemetry_sdk 0.32.1",
  "pin-project-lite",
  "proptest",
@@ -1560,8 +1560,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4d947736518edc39f45a319a94231069399c88059fef328fe1e12bf8d9706be5"
 dependencies = [
  "axum",
- "opentelemetry-otlp",
- "opentelemetry-proto",
+ "opentelemetry-otlp 0.32.0",
+ "opentelemetry-proto 0.32.0",
  "prost",
  "serde",
  "serde_json",
@@ -1675,8 +1675,8 @@ dependencies = [
  "humantime-serde",
  "opentelemetry 0.32.0",
  "opentelemetry-appender-tracing",
- "opentelemetry-otlp",
- "opentelemetry-proto",
+ "opentelemetry-otlp 0.32.0",
+ "opentelemetry-proto 0.32.0",
  "opentelemetry-resource-detectors",
  "opentelemetry-semantic-conventions",
  "opentelemetry_sdk 0.32.1",
@@ -1703,6 +1703,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "opentelemetry-http"
+version = "0.33.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ee2c3625b8aa04209f7e01e513bc8044da9687fa38a9eacf59628ca5f3b87300"
+dependencies = [
+ "async-trait",
+ "bytes",
+ "http",
+ "opentelemetry 0.33.0",
+ "reqwest",
+]
+
+[[package]]
 name = "opentelemetry-lambda-example"
 version = "0.1.0"
 dependencies = [
@@ -1712,7 +1725,7 @@ dependencies = [
  "opentelemetry 0.32.0",
  "opentelemetry-configuration",
  "opentelemetry-lambda-tower",
- "opentelemetry-otlp",
+ "opentelemetry-otlp 0.33.0",
  "opentelemetry_sdk 0.32.1",
  "rustls",
  "serde",
@@ -1741,7 +1754,7 @@ dependencies = [
  "mock-collector",
  "opentelemetry 0.32.0",
  "opentelemetry-lambda-example",
- "opentelemetry-proto",
+ "opentelemetry-proto 0.32.0",
  "opentelemetry-semantic-conventions",
  "opentelemetry_sdk 0.32.1",
  "proptest",
@@ -1801,12 +1814,32 @@ checksum = "9966929966d17620d7c316c643ba62631826e10021409357772d5eea84f62c35"
 dependencies = [
  "http",
  "opentelemetry 0.32.0",
- "opentelemetry-http",
- "opentelemetry-proto",
+ "opentelemetry-http 0.32.0",
+ "opentelemetry-proto 0.32.0",
  "opentelemetry_sdk 0.32.1",
  "prost",
  "reqwest",
  "serde_json",
+ "thiserror",
+ "tokio",
+ "tonic",
+ "tonic-types",
+]
+
+[[package]]
+name = "opentelemetry-otlp"
+version = "0.33.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "699a67345e21962a231955b9059a157e428b219fa5df8efe11f08346fb23a344"
+dependencies = [
+ "http",
+ "httpdate",
+ "opentelemetry 0.33.0",
+ "opentelemetry-http 0.33.0",
+ "opentelemetry-proto 0.33.0",
+ "opentelemetry_sdk 0.33.0",
+ "prost",
+ "reqwest",
  "thiserror",
  "tokio",
  "tonic",
@@ -1825,6 +1858,19 @@ dependencies = [
  "opentelemetry_sdk 0.32.1",
  "prost",
  "serde",
+ "tonic",
+ "tonic-prost",
+]
+
+[[package]]
+name = "opentelemetry-proto"
+version = "0.33.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "25da1ac11a0aeccf38d7f77ee0348715adaf8340f65ad46c94a02c6b20e2f65d"
+dependencies = [
+ "opentelemetry 0.33.0",
+ "opentelemetry_sdk 0.33.0",
+ "prost",
  "tonic",
  "tonic-prost",
 ]
