@@ -1678,7 +1678,7 @@ dependencies = [
  "opentelemetry-otlp 0.32.0",
  "opentelemetry-proto 0.32.0",
  "opentelemetry-resource-detectors",
- "opentelemetry-semantic-conventions",
+ "opentelemetry-semantic-conventions 0.32.1",
  "opentelemetry_sdk 0.32.1",
  "prost",
  "serde",
@@ -1755,7 +1755,7 @@ dependencies = [
  "opentelemetry 0.32.0",
  "opentelemetry-lambda-example",
  "opentelemetry-proto 0.32.0",
- "opentelemetry-semantic-conventions",
+ "opentelemetry-semantic-conventions 0.33.0",
  "opentelemetry_sdk 0.32.1",
  "proptest",
  "prost",
@@ -1789,7 +1789,7 @@ dependencies = [
  "mock-collector",
  "opentelemetry 0.32.0",
  "opentelemetry-configuration",
- "opentelemetry-semantic-conventions",
+ "opentelemetry-semantic-conventions 0.33.0",
  "opentelemetry-stdout",
  "opentelemetry_sdk 0.32.1",
  "pin-project",
@@ -1882,7 +1882,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "96c8b28af3391a756b248f470f59b35041dd3ac9b9633d2df40757df709314f1"
 dependencies = [
  "opentelemetry 0.32.0",
- "opentelemetry-semantic-conventions",
+ "opentelemetry-semantic-conventions 0.32.1",
  "opentelemetry_sdk 0.32.1",
 ]
 
@@ -1891,6 +1891,12 @@ name = "opentelemetry-semantic-conventions"
 version = "0.32.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c913ac17a6c451661ee255f4625d143e51647ae78ebd969b75e41c4442f4fe47"
+
+[[package]]
+name = "opentelemetry-semantic-conventions"
+version = "0.33.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d288b1e1bc3590052fbb8f0f635ef248dd9022cf1fbaeb6582b7ad6081a17b87"
 
 [[package]]
 name = "opentelemetry-stdout"
