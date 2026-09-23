@@ -1377,7 +1377,7 @@ dependencies = [
  "lambda_runtime",
  "mock-collector",
  "nix",
- "opentelemetry 0.32.0",
+ "opentelemetry 0.33.0",
  "opentelemetry-otlp 0.33.0",
  "opentelemetry_sdk 0.32.1",
  "pin-project-lite",
@@ -1651,6 +1651,7 @@ dependencies = [
  "js-sys",
  "pin-project-lite",
  "thiserror",
+ "tracing",
 ]
 
 [[package]]
@@ -1722,7 +1723,7 @@ dependencies = [
  "aws_lambda_events",
  "lambda-simulator",
  "lambda_runtime",
- "opentelemetry 0.32.0",
+ "opentelemetry 0.33.0",
  "opentelemetry-configuration",
  "opentelemetry-lambda-tower",
  "opentelemetry-otlp 0.33.0",
@@ -1752,7 +1753,7 @@ dependencies = [
  "lambda-simulator",
  "lambda_runtime",
  "mock-collector",
- "opentelemetry 0.32.0",
+ "opentelemetry 0.33.0",
  "opentelemetry-lambda-example",
  "opentelemetry-proto 0.32.0",
  "opentelemetry-semantic-conventions 0.33.0",
@@ -1787,7 +1788,7 @@ dependencies = [
  "lambda_http",
  "lambda_runtime",
  "mock-collector",
- "opentelemetry 0.32.0",
+ "opentelemetry 0.33.0",
  "opentelemetry-configuration",
  "opentelemetry-semantic-conventions 0.33.0",
  "opentelemetry-stdout",
